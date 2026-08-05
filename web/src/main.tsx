@@ -22,6 +22,7 @@ import {
 } from "./transportActions";
 import type {
   Battle,
+  DiceRoll,
   BoardCatalog,
   BoardSpace,
   Game,
@@ -29,6 +30,15 @@ import type {
   MoveOrder,
   WorldUnit,
 } from "./types";
+import {
+  NARROW,
+  color,
+  powerColor,
+  radius,
+  shadow,
+  space,
+  type as t,
+} from "./theme";
 import "./theme.css";
 
 const API = "/api",
@@ -176,9 +186,9 @@ function App() {
   if (!sessions[gameID])
     return (
       <Shell>
-        <ErrorBanner message="This browser does not have a token for that private game." />
+        <ErrorBanner message="This browser isn't signed in to that game." />
         <Button
-          label="Return home"
+          label="Back to my games"
           onPress={() => {
             history.pushState({}, "", "/");
             setGameID("");
@@ -189,20 +199,25 @@ function App() {
   if (!game)
     return (
       <Shell>
-        <Text style={s.eyebrow}>OPENING SECURE CHANNEL</Text>
-        <Text style={s.title}>Loading war room...</Text>
-        {error && <ErrorBanner message={error} />}
-        {error && (
+        <Text style={s.eyebrow}>ONE SEC</Text>
+        <Text style={s.title}>Loading your game…</Text>
+        {!!error && <ErrorBanner message={error} />}
+        {!!error && (
           <>
             <Button
-              label="Return to campaigns"
+              label="Back to my games"
               onPress={() => {
                 history.pushState({}, "", "/");
                 setGameID("");
                 setGame(null);
               }}
             />
-            <Pressable onPress={() => forget(gameID)}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Forget this game"
+              dataSet={{ class: "fc-press" }}
+              onPress={() => forget(gameID)}
+            >
               <Text style={s.dangerLink}>Forget this campaign on this browser</Text>
             </Pressable>
           </>
@@ -244,7 +259,7 @@ function Landing({
   openGame: (id: string) => void;
   forget: (id: string) => void;
 }) {
-  const narrow = useWindowDimensions().width < 850;
+  const narrow = useWindowDimensions().width < NARROW;
   const [mode, setMode] = useState<"create" | "join">("create"),
     [gameName, setGameName] = useState(""),
     [playerName, setPlayerName] = useState(""),
@@ -336,37 +351,37 @@ function Landing({
     >
       <View style={[s.hero, narrow && s.heroNarrow]}>
         <Brand />
-        <Text style={s.kicker}>CLASSIC 1942 / PRIVATE MULTIPLAYER</Text>
+        <Text style={s.kicker}>1942 · PLAY WITH YOUR FRIENDS</Text>
         <Text style={[s.heroTitle, narrow && s.heroTitleNarrow]}>
-          The long game,{"\n"}
-          <Text style={s.gold}>beautifully organized.</Text>
+          Take over{"\n"}
+          <Text style={s.gold}>the whole world.</Text>
         </Text>
         <Text style={s.heroCopy}>
-          A persistent, authoritative war room for Axis & Allies 1942 Second
-          Edition.
+          Axis & Allies 1942, online with your friends. Play a turn whenever
+          you want — the game waits for you.
         </Text>
-        <Text style={s.heroFoot}>5 POWERS / 6 PHASES / ONE WORLD MAP</Text>
+        <Text style={s.heroFoot}>5 POWERS · 6 PHASES · 1 WORLD MAP</Text>
       </View>
       <View style={[s.access, narrow && s.accessNarrow]}>
-        <Text style={s.eyebrow}>ESTABLISH COMMAND</Text>
+        <Text style={s.eyebrow}>GET STARTED</Text>
         <Text style={s.panelTitle}>
-          {mode === "create" ? "Open a campaign" : "Join your allies"}
+          {mode === "create" ? "Start a game" : "Join a game"}
         </Text>
         <View style={s.tabs}>
           <Tab
             active={mode === "create"}
-            label="Create game"
+            label="New game"
             onPress={() => setMode("create")}
           />
           <Tab
             active={mode === "join"}
-            label="Join by code"
+            label="Have a code?"
             onPress={() => setMode("join")}
           />
         </View>
         {mode === "create" ? (
           <Field
-            label="CAMPAIGN NAME"
+            label="GAME NAME"
             value={gameName}
             onChange={setGameName}
             placeholder="Sunday Night 1942"
@@ -380,32 +395,29 @@ function Landing({
           />
         )}
         <Field
-          label="YOUR CALLSIGN"
+          label="YOUR NAME"
           value={playerName}
           onChange={setPlayerName}
           placeholder="Commander name"
         />
-        {error && <ErrorBanner message={error} />}
+        {!!error && <ErrorBanner message={error} />}
         <Button
-          label={
-            busy
-              ? "Establishing..."
-              : mode === "create"
-                ? "Create campaign"
-                : "Enter war room"
-          }
+          label={mode === "create" ? "Create game" : "Join game"}
           onPress={submit}
-          disabled={busy}
+          loading={busy}
         />
         {Object.keys(sessions).length > 0 && (
           <View style={s.campaignSection}>
-            <Text style={s.eyebrow}>YOUR CAMPAIGNS</Text>
+            <Text style={s.eyebrow}>YOUR GAMES</Text>
             {loadingCampaigns && (
-              <Text style={s.footnote}>Checking secure campaign access...</Text>
+              <Text style={s.footnote}>Looking up your games…</Text>
             )}
             {campaigns.map((campaign) => (
               <View key={campaign.id} style={s.campaignCard}>
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${campaign.name}`}
+                  dataSet={{ class: "fc-press fc-glow" }}
                   style={s.campaignOpen}
                   onPress={() => openGame(campaign.id)}
                 >
@@ -419,18 +431,21 @@ function Landing({
                 </Pressable>
                 {campaign.isOwner && confirming !== campaign.id && (
                   <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${campaign.name}`}
+                    dataSet={{ class: "fc-press" }}
                     onPress={() => {
                       setConfirming(campaign.id);
                       setConfirmationName("");
                     }}
                   >
-                    <Text style={s.campaignDelete}>Delete permanently</Text>
+                    <Text style={s.campaignDelete}>Delete</Text>
                   </Pressable>
                 )}
                 {campaign.isOwner && confirming === campaign.id && (
                   <View style={s.deleteConfirm}>
                     <Text style={s.deleteWarning}>
-                      Type "{campaign.name}" to permanently delete this campaign.
+                      Type "{campaign.name}" to delete this game for good.
                     </Text>
                     <TextInput
                       value={confirmationName}
@@ -441,7 +456,7 @@ function Landing({
                     />
                     <View style={s.confirmActions}>
                       <SmallButton
-                        label={deleting === campaign.id ? "Deleting..." : "Delete forever"}
+                        label={deleting === campaign.id ? "Deleting…" : "Delete forever"}
                         disabled={
                           deleting === campaign.id ||
                           confirmationName !== campaign.name
@@ -464,7 +479,12 @@ function Landing({
             {unavailable.map((id) => (
               <View key={id} style={s.unavailableCampaign}>
                 <Text style={s.campaignMeta}>UNAVAILABLE / {id}</Text>
-                <Pressable onPress={() => forget(id)}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Forget this game"
+                  dataSet={{ class: "fc-press" }}
+                  onPress={() => forget(id)}
+                >
                   <Text style={s.campaignDelete}>Forget from this browser</Text>
                 </Pressable>
               </View>
@@ -491,7 +511,7 @@ function WarRoom({
   command: (t: string, p?: object) => Promise<boolean>;
   leave: () => void;
 }) {
-  const narrow = useWindowDimensions().width < 900,
+  const narrow = useWindowDimensions().width < NARROW,
     myTurn = game.me.powers.includes(game.currentPower),
     movement =
       game.currentPhase === "Combat Move" ||
@@ -571,6 +591,12 @@ function WarRoom({
     if (await command("movement_plan", { moves: all, transports }))
       setMoves([]);
   };
+  // A decision addressed to one of my powers outranks whose turn it is: the
+  // banner used to tell the player who had to act right now that it was
+  // "AWAITING COMMAND" from somebody else.
+  const myDecisions = Object.entries(game.pendingDecisions).filter(
+    ([, d]) => !d.power || game.me.powers.includes(d.power),
+  );
   const routeNeighbors =
     route.length && catalog
       ? catalog.connections.flatMap((e) =>
@@ -581,14 +607,19 @@ function WarRoom({
     <View style={s.app}>
       <View style={s.topbar}>
         <Brand />
-        <Pressable onPress={leave}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back to campaigns"
+          dataSet={{ class: "fc-press" }}
+          onPress={leave}
+        >
           <Text style={s.quietLink}>Campaigns</Text>
         </Pressable>
       </View>
       <ScrollView contentContainerStyle={s.dashboard}>
         <View style={s.gameHeader}>
-          <View>
-            <Text style={s.eyebrow}>CAMPAIGN / ROUND {game.state.round}</Text>
+          <View style={s.gameHeaderText}>
+            <Text style={s.eyebrow}>ROUND {game.state.round}</Text>
             <Text style={s.title}>{game.name}</Text>
             <Text style={s.subtitle}>
               Invite code <Text style={s.code}>{game.joinCode}</Text>
@@ -596,8 +627,8 @@ function WarRoom({
           </View>
           <StatusPill status={game.state.status} />
         </View>
-        {error && <ErrorBanner message={error} />}{" "}
-        {notice && (
+        {!!error && <ErrorBanner message={error} />}
+        {!!notice && (
           <View style={s.noticeBanner}>
             <Text style={s.noticeText}>{notice}</Text>
           </View>
@@ -606,22 +637,31 @@ function WarRoom({
           <Lobby game={game} busy={busy} command={command} />
         ) : game.state.status === "finished" ? (
           <View style={s.card}>
-            <Text style={s.eyebrow}>CAMPAIGN COMPLETE</Text>
-            <Text style={s.cardTitle}>{game.state.winner} victory</Text>
-            <Text style={s.subtitle}>
-              The server has declared this campaign finished.
-            </Text>
+            <Text style={s.eyebrow}>GAME OVER</Text>
+            <Text style={s.cardTitle}>{game.state.winner} wins!</Text>
+            <Text style={s.subtitle}>That's the game. Good fight.</Text>
           </View>
         ) : (
           <>
-            <View style={s.turnCard}>
-              <View>
+            <View
+              style={[
+                s.turnCard,
+                myTurn || myDecisions.length
+                  ? s.turnCardMine
+                  : s.turnCardTheirs,
+              ]}
+            >
+              <View style={s.flex}>
                 <Text style={s.eyebrow}>
-                  {myTurn ? "YOUR ORDERS ARE REQUIRED" : "AWAITING COMMAND"}
+                  {myDecisions.length
+                    ? "THEY'RE WAITING ON YOU"
+                    : myTurn
+                      ? "YOUR MOVE"
+                      : "WAITING ON ANOTHER PLAYER"}
                 </Text>
                 <Text style={s.turnPower}>{game.currentPower}</Text>
                 <Text style={s.subtitle}>
-                  Round {game.state.round} / {game.currentPhase}
+                  Round {game.state.round} · {game.currentPhase}
                 </Text>
               </View>
               <View style={s.ipcBadge}>
@@ -631,16 +671,20 @@ function WarRoom({
                 <Text style={s.ipcLabel}>IPC</Text>
               </View>
             </View>
-            {Object.entries(game.pendingDecisions).map(([territory, d]) => (
-              <View key={territory} style={s.decisionAlert}>
-                <Text style={s.decisionTitle}>
-                  DECISION PENDING / {spaceName(catalog, territory)}
-                </Text>
-                <Text style={s.decisionCopy}>
-                  {decisionDescription(d.kind, d.power, d.hits, d.minHits)}
-                </Text>
+            {/* One alert, only when the decision is actually mine. Every kind
+                has a dedicated panel below, so listing each pending decision
+                here restated the same sentence twice on screen. */}
+            {myDecisions.length > 0 && (
+              <View dataSet={{ class: "fc-rise" }} style={s.decisionAlert}>
+                <Text style={s.decisionTitle}>YOUR CALL</Text>
+                {myDecisions.map(([territory, d]) => (
+                  <Text key={territory} style={s.decisionCopy}>
+                    {spaceName(catalog, territory)} —{" "}
+                    {decisionDescription(d.kind, d.power, d.hits, d.minHits)}
+                  </Text>
+                ))}
               </View>
-            ))}
+            )}
             {Object.entries(game.pendingDecisions)
               .filter(([, d]) => d.kind === "choose-fighter-landing")
               .map(([territory]) => (
@@ -713,7 +757,7 @@ function WarRoom({
                     submit={submitMoves}
                     disabled={!myTurn || busy}
                   />
-                )}{" "}
+                )}
                 {movement && (
                   <StationaryTransportPanel
                     game={game}
@@ -721,7 +765,7 @@ function WarRoom({
                     disabled={!myTurn || busy}
                     command={command}
                   />
-                )}{" "}
+                )}
                 {movement && game.currentPhase === "Combat Move" && (
                   <IgnoreSeaUnitsPanel
                     game={game}
@@ -731,14 +775,15 @@ function WarRoom({
                     command={command}
                     clear={() => setMoves([])}
                   />
-                )}{" "}
+                )}
                 {game.currentPhase === "Purchase" && (
                   <PurchasePanel
                     game={game}
+                    catalog={catalog}
                     disabled={!myTurn || busy}
                     command={command}
                   />
-                )}{" "}
+                )}
                 {game.currentPhase === "Resolve Combat" && (
                   <CombatPanel
                     game={game}
@@ -746,7 +791,7 @@ function WarRoom({
                     disabled={busy}
                     command={command}
                   />
-                )}{" "}
+                )}
                 {game.currentPhase === "Place Units" && (
                   <PlacementPanel
                     game={game}
@@ -758,24 +803,26 @@ function WarRoom({
                     disabled={!myTurn || busy}
                     command={command}
                   />
-                )}{" "}
+                )}
                 {game.currentPhase === "Collect Income" && (
                   <InfoCard
-                    title="Collect income"
-                    copy={`${game.currentPower} will collect ${game.state.income[game.currentPower]} IPCs and end its turn.`}
+                    title="Payday"
+                    copy={`${game.currentPower} banks ${game.state.income[game.currentPower]} IPC and the turn passes on.`}
                   />
-                )}{" "}
+                )}
+                {/* Mirrored next to the control that caused it: the single
+                    banner at the top of the dashboard could sit 3000px above
+                    the button the player had just pressed. */}
+                {!!error && <ErrorBanner message={error} />}
                 {myTurn && (
                   <Button
                     label={
-                      busy
-                        ? "Recording orders..."
-                        : game.currentPhase === "Collect Income"
-                          ? "Collect income & end turn"
-                          : `Complete ${game.currentPhase}`
+                      game.currentPhase === "Collect Income"
+                        ? "Cash in & end turn"
+                        : `Done with ${game.currentPhase}`
                     }
                     onPress={() => void command("complete_phase")}
-                    disabled={busy}
+                    loading={busy}
                   />
                 )}
               </View>
@@ -786,37 +833,51 @@ function WarRoom({
             </View>
           </>
         )}
-        {game.state.status === "active" && canConcede && (
-          <View style={s.deleteConfirm}>
-            {concedeArmed ? (
-              <>
-                <Text style={s.deleteWarning}>
-                  Conceding immediately awards victory to the opposing alliance.
-                </Text>
-                <View style={s.inline}>
-                  <Pressable
-                    disabled={busy}
-                    onPress={() => void command("concede_game")}
-                  >
-                    <Text style={s.dangerLink}>Confirm concession</Text>
-                  </Pressable>
-                  <Pressable onPress={() => setConcedeArmed(false)}>
-                    <Text style={s.quietLink}>Cancel</Text>
-                  </Pressable>
-                </View>
-              </>
-            ) : (
-              <Pressable onPress={() => setConcedeArmed(true)}>
-                <Text style={s.dangerLink}>Concede campaign</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-        {game.me.isOwner && game.state.status === "active" && (
-          <Pressable onPress={() => void command("abandon_game")}>
-            <Text style={s.dangerLink}>Mark campaign abandoned</Text>
-          </Pressable>
-        )}
+        {/* These used to be a bare underlined link inside a pink box plus a
+            second bare link floating outside any container, which read as
+            unfinished markup. */}
+        {game.state.status === "active" &&
+          (canConcede || game.me.isOwner) &&
+          (concedeArmed ? (
+            <View dataSet={{ class: "fc-rise" }} style={s.deleteConfirm}>
+              <Text style={s.deleteWarning}>
+                Conceding hands the win to the other side. No takebacks.
+              </Text>
+              <View style={s.confirmActions}>
+                <SmallButton
+                  label="Yes, I concede"
+                  tone="danger"
+                  disabled={busy}
+                  onPress={() => void command("concede_game")}
+                />
+                <SmallButton
+                  label="Never mind"
+                  onPress={() => setConcedeArmed(false)}
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={s.dangerRow}>
+              {canConcede && (
+                <Pressable
+                  accessibilityRole="button"
+                  dataSet={{ class: "fc-press" }}
+                  onPress={() => setConcedeArmed(true)}
+                >
+                  <Text style={s.dangerLink}>Concede</Text>
+                </Pressable>
+              )}
+              {game.me.isOwner && (
+                <Pressable
+                  accessibilityRole="button"
+                  dataSet={{ class: "fc-press" }}
+                  onPress={() => void command("abandon_game")}
+                >
+                  <Text style={s.dangerLink}>Abandon this game</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
       </ScrollView>
     </View>
   );
@@ -824,28 +885,24 @@ function WarRoom({
 
 function PhaseGuide({ phase, myTurn }: { phase: string; myTurn: boolean }) {
   const instructions: Record<string, string> = {
-    Purchase:
-      "Purchase and repair below the map, then complete this phase to unlock Combat Move.",
+    Purchase: "Spend your IPC on new units below the map.",
     "Combat Move":
-      "Select a territory, choose one or more of your units in the map inspector, then click adjacent spaces to plot a route. Add the route and submit the movement plan.",
-    "Resolve Combat":
-      "Resolve every highlighted battle below the map. Combat cannot be skipped while a battle or decision remains.",
+      "Tap a space, pick your units, then tap where they're attacking.",
+    "Resolve Combat": "Fight every battle below. You can't skip this one.",
     "Noncombat Move":
-      "Select your units on the map and plot movement through friendly spaces. All aircraft must finish with a legal landing.",
-    "Place Units":
-      "Choose purchased units below the map, then select a legal factory territory or adjacent sea zone.",
-    "Collect Income":
-      "Review your controlled territories and collect income to finish the turn.",
+      "Reposition through friendly spaces. Planes have to land somewhere.",
+    "Place Units": "Put your new units on a factory or the sea next to one.",
+    "Collect Income": "Cash in and end your turn.",
   };
   return (
     <View style={s.phaseGuide}>
       <Text style={s.phaseGuideTitle}>
-        {myTurn ? "HOW TO PLAY THIS PHASE" : "CURRENT PHASE"}
+        {myTurn ? "WHAT TO DO" : "WHAT'S HAPPENING"}
       </Text>
       <Text style={s.phaseGuideText}>
         {myTurn
-          ? instructions[phase] || "Use the controls below the map to continue."
-          : `Waiting for the ${phase} orders from the active commander.`}
+          ? instructions[phase] || "Use the controls below the map."
+          : `Someone else is doing their ${phase}. Sit tight.`}
       </Text>
     </View>
   );
@@ -909,20 +966,18 @@ function MovementPanel({
     }));
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>MOVEMENT PLAN</Text>
-      <Text style={s.cardTitle}>Plot routes on the map</Text>
+      <Text style={s.eyebrow}>MOVES</Text>
+      <Text style={s.cardTitle}>Pick your targets</Text>
       <Text style={s.subtitle}>
-        Select your unit chips in a space, then click adjacent spaces in order.
-        The server checks movement, domains, hostility, canals, and landing
-        capacity.
+        Tap a space, pick your units, then tap where they should go.
       </Text>
       {selected.length > 0 && (
         <View style={s.draft}>
           <Text style={s.draftText}>
-            {selected.length} selected /{" "}
+            {plural(selected.length, "unit")} ready ·{" "}
             {route.length > 1
               ? route.map((id) => spaceName(catalog, id)).join(" → ")
-              : "choose an adjacent destination"}
+              : "now tap where they're going"}
           </Text>
           <View style={s.inline}>
             <SmallButton label="Clear" onPress={clear} />
@@ -935,18 +990,17 @@ function MovementPanel({
         </View>
       )}
       {moves.map((m) => (
-        <Pressable
-          key={m.unitId}
-          onPress={() => remove(m.unitId)}
-          style={s.orderRow}
-        >
-          <Text style={s.orderText}>
-            {units[m.unitId]?.type} {m.unitId}
-          </Text>
+        <View key={m.unitId} style={s.orderRow}>
+          <Text style={s.orderText}>{unitLabel(units, m.unitId)}</Text>
           <Text style={s.orderPath}>
-            {m.path.map((id) => spaceName(catalog, id)).join(" → ")} ×
+            {m.path.map((id) => spaceName(catalog, id)).join(" → ")}
           </Text>
-        </Pressable>
+          <SmallButton
+            label="Remove"
+            tone="danger"
+            onPress={() => remove(m.unitId)}
+          />
+        </View>
       ))}
       {transportMoves.map((move) => {
         const available = Object.values(units).filter(
@@ -964,7 +1018,9 @@ function MovementPanel({
           ) || [];
         return (
           <View key={`cargo-${move.unitId}`} style={s.pending}>
-            <Text style={s.pendingTitle}>CARGO / {move.unitId}</Text>
+            <Text style={s.pendingTitle}>
+              CARGO · {unitAt(units, catalog, move.unitId)}
+            </Text>
             <Text style={s.hint}>
               Select one or two land units. Two-unit loads require infantry.
             </Text>
@@ -985,10 +1041,13 @@ function MovementPanel({
               .length > 0 && (
               <>
                 <Text style={s.sectionLabel}>
-                  UNLOAD DESTINATION / OPTIONAL
+                  UNLOAD DESTINATION · OPTIONAL
                 </Text>
                 <View style={s.chips}>
                   <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: !unloads[move.unitId] }}
+                    dataSet={{ class: "fc-press fc-glow" }}
                     onPress={() =>
                       setUnloads((x) => ({ ...x, [move.unitId]: "" }))
                     }
@@ -1002,6 +1061,12 @@ function MovementPanel({
                   {destinations.map((space) => (
                     <Pressable
                       key={space.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={space.name}
+                      accessibilityState={{
+                        selected: unloads[move.unitId] === space.id,
+                      }}
+                      dataSet={{ class: "fc-press fc-glow" }}
                       onPress={() =>
                         setUnloads((x) => ({ ...x, [move.unitId]: space.id }))
                       }
@@ -1020,7 +1085,7 @@ function MovementPanel({
         );
       })}
       <Button
-        label={`Submit movement plan (${moves.length + (route.length > 1 ? selected.length : 0)} units)`}
+        label={`Send ${plural(moves.length + selected.length, "unit")}`}
         onPress={() => submit(orders)}
         disabled={disabled || (!moves.length && route.length < 2)}
       />
@@ -1030,10 +1095,12 @@ function MovementPanel({
 
 function PurchasePanel({
   game,
+  catalog,
   disabled,
   command,
 }: {
   game: Game;
+  catalog: BoardCatalog | null;
   disabled: boolean;
   command: (t: string, p?: object) => Promise<boolean>;
 }) {
@@ -1063,7 +1130,7 @@ function PurchasePanel({
   };
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>PURCHASE & REPAIR</Text>
+      <Text style={s.eyebrow}>SHOPPING</Text>
       <View style={s.cardHeading}>
         <Text style={s.cardTitle}>Build order</Text>
         <Text style={s.total}>
@@ -1077,9 +1144,11 @@ function PurchasePanel({
               <Text style={s.unitName}>{name}</Text>
               <Text style={s.unitCost}>{spec.Cost}</Text>
             </View>
-            <Text style={s.unitStats}>
-              A{spec.Attack} D{spec.Defense} M{spec.Move}
-            </Text>
+            <StatPips
+              attack={spec.Attack}
+              defense={spec.Defense}
+              move={spec.Move}
+            />
             <View style={s.stepper}>
               <SmallButton
                 label="−"
@@ -1094,11 +1163,12 @@ function PurchasePanel({
       </View>
       {factories.length > 0 && (
         <>
-          <Text style={s.sectionLabel}>FACTORY REPAIRS / 1 IPC EACH</Text>
+          <Text style={s.sectionLabel}>FACTORY REPAIRS · 1 IPC EACH</Text>
           {factories.map((f) => (
             <View key={f.id} style={s.repairRow}>
               <Text style={s.orderText}>
-                {f.id} / {f.damage} damage / {f.space}
+                Factory in {spaceName(catalog, f.space)} ·{" "}
+                {plural(f.damage || 0, "damage", "damage")}
               </Text>
               <View style={s.stepper}>
                 <SmallButton
@@ -1181,14 +1251,26 @@ function CombatPanel({
         .map((u) => u.space),
     ),
   ];
+  // Only targets you can actually hit right now get a row.
+  const raidable = bombingTargets
+    .map((target) => ({
+      target,
+      bombers: Object.values(game.worldUnits).filter(
+        (u) =>
+          u.owner === game.currentPower &&
+          u.type === "Bomber" &&
+          u.space === target,
+      ),
+    }))
+    .filter((x) => x.bombers.length);
   return (
     <View style={s.stack}>
       <View style={s.card}>
-        <Text style={s.eyebrow}>BATTLE BOARD</Text>
+        <Text style={s.eyebrow}>BATTLES</Text>
         <Text style={s.cardTitle}>
           {active.length
-            ? `${active.length} contested space(s)`
-            : "No battles declared"}
+            ? `${plural(active.length, "battle")} to fight`
+            : "Nothing to fight yet"}
         </Text>
         {active.map((b) => (
           <BattleCard
@@ -1211,39 +1293,34 @@ function CombatPanel({
         ))}
       </View>
       <View style={s.card}>
-        <Text style={s.eyebrow}>STRATEGIC BOMBING</Text>
-        <Text style={s.subtitle}>
-          Bombers already moved into an enemy factory territory may raid instead
-          of joining battle.
-        </Text>
-        {bombingTargets.map((target) => {
-          const bombers = Object.values(game.worldUnits).filter(
-            (u) =>
-              u.owner === game.currentPower &&
-              u.type === "Bomber" &&
-              u.space === target,
-          );
-          return (
-            <View key={target} style={s.raidRow}>
-              <View>
-                <Text style={s.orderText}>{spaceName(catalog, target)}</Text>
-                <Text style={s.hint}>{bombers.length} bomber(s) in target</Text>
-              </View>
-              <SmallButton
-                label="Bomb"
-                disabled={disabled || !bombers.length}
-                onPress={() =>
-                  void command("strategic_bomb", {
-                    target,
-                    bomberIds: bombers.map((u) => u.id),
-                  })
-                }
-              />
+        <Text style={s.eyebrow}>BOMBING RAIDS</Text>
+
+        {raidable.map(({ target, bombers }) => (
+          <View key={target} style={s.raidRow}>
+            <View>
+              <Text style={s.orderText}>{spaceName(catalog, target)}</Text>
+              <Text style={s.hint}>
+                {plural(bombers.length, "bomber")} in range
+              </Text>
             </View>
-          );
-        })}
-        {!bombingTargets.length && (
-          <Text style={s.hint}>No enemy industrial complexes remain.</Text>
+            <SmallButton
+              label="Bomb it"
+              disabled={disabled}
+              onPress={() =>
+                void command("strategic_bomb", {
+                  target,
+                  bomberIds: bombers.map((u) => u.id),
+                })
+              }
+            />
+          </View>
+        ))}
+        {!raidable.length && (
+          <Text style={s.hint}>
+            {bombingTargets.length
+              ? "Move a bomber onto an enemy factory to raid it."
+              : "No enemy factories left standing."}
+          </Text>
         )}
       </View>
     </View>
@@ -1302,15 +1379,17 @@ function BattleCard({
             {spaceName(catalog, battle.territory)}
           </Text>
           <Text style={s.hint}>
-            Round {battle.round} /{" "}
+            Round {battle.round} ·{" "}
             {battle.complete
-              ? `complete · ${battle.winner || "no victor"}`
-              : battle.stage}
+              ? `${battle.winner || "Nobody"} took it`
+              : pending
+                ? "Waiting on a decision"
+                : stageLabel(battle.stage)}
           </Text>
         </View>
         {!battle.complete && !pending && battle.started && (
           <SmallButton
-            label="Advance battle"
+            label="Roll dice 🎲"
             disabled={disabled || !game.me.powers.includes(game.currentPower)}
             onPress={() =>
               void command("battle_step", { territory: battle.territory })
@@ -1318,12 +1397,14 @@ function BattleCard({
           />
         )}
       </View>
+      <DiceStrip rolls={battle.diceTranscript || []} />
       {battle.stage === "aaa" &&
         battle.round === 0 &&
         !battle.complete &&
-        !battle.started && (
+        !battle.started &&
+        bombardment.ids.length > 0 && (
         <>
-          <Text style={s.sectionLabel}>OPTIONAL NAVAL BOMBARDMENT</Text>
+          <Text style={s.sectionLabel}>SHORE BOMBARDMENT · OPTIONAL</Text>
           <ChipList
             ids={bombardment.ids}
             units={game.worldUnits}
@@ -1340,7 +1421,7 @@ function BattleCard({
             }
           />
           <SmallButton
-            label="Start battle with selection"
+            label="Fight!"
             disabled={disabled || !game.me.powers.includes(game.currentPower)}
             onPress={() =>
               void command("start_battle", {
@@ -1368,13 +1449,16 @@ function BattleCard({
                 units={game.worldUnits}
                 selected={choices}
                 toggle={casualty}
+                specs={game.units}
+                doomed
+                atCap={choices.length >= requiredHits}
                 counts
               />
               <Text style={s.hint}>
-                {choices.length} / {requiredHits} hits assigned
+                {choices.length} of {plural(requiredHits, "hit")} assigned
               </Text>
               <SmallButton
-                label="Confirm casualties"
+                label="Lock it in"
                 disabled={
                   disabled || !canDecide || choices.length !== requiredHits
                 }
@@ -1488,49 +1572,57 @@ function PlacementPanel({
   };
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>MOBILIZATION</Text>
-      <Text style={s.cardTitle}>Place purchased units</Text>
+      <Text style={s.eyebrow}>DEPLOY</Text>
+      <Text style={s.cardTitle}>Deploy your new stuff</Text>
       <Text style={s.subtitle}>
-        Choose a unit, click its destination on the map, then add it. The server
-        validates factory eligibility and capacity.
+        Pick a unit, tap where it goes on the map, then add it.
       </Text>
       <View style={s.chips}>
-        {Object.entries(counts).map(([name, count]) => (
-          <Pressable
-            key={name}
-            disabled={(planned[name] || 0) >= count}
-            onPress={() => setType(name)}
-            style={[s.choiceChip, type === name && s.choiceChipActive]}
-          >
-            <Text style={s.choiceText}>
-              {name} {count - (planned[name] || 0)}
-            </Text>
-          </Pressable>
-        ))}
+        {Object.entries(counts).map(([name, count]) => {
+          const left = count - (planned[name] || 0);
+          return (
+            <Pressable
+              key={name}
+              accessibilityRole="button"
+              accessibilityState={{ selected: type === name, disabled: !left }}
+              disabled={!left}
+              dataSet={{ class: left ? "fc-press fc-glow" : "fc-off" }}
+              onPress={() => setType(name)}
+              style={[
+                s.choiceChip,
+                type === name && !!left && s.choiceChipActive,
+                !left && s.choiceChipDisabled,
+              ]}
+            >
+              <Text style={s.choiceText}>{name}</Text>
+              <Text style={s.chipStats}>{left} left</Text>
+            </Pressable>
+          );
+        })}
       </View>
-      {type && (
+      {!!type && (
         <View style={s.draft}>
           <Text style={s.draftText}>
-            {type} /{" "}
-            {target ? spaceName(catalog, target) : "click destination on map"}
+            {type} → {target ? spaceName(catalog, target) : "tap the map"}
           </Text>
-          <SmallButton label="Add placement" onPress={add} disabled={!target} />
+          <SmallButton label="Add it" onPress={add} disabled={!target} />
         </View>
       )}
       {placements.map((p, i) => (
-        <Pressable
-          key={`${p.Type}-${p.Space}`}
-          onPress={() => setPlacements((x) => x.filter((_, j) => j !== i))}
-          style={s.orderRow}
-        >
+        <View key={`${p.Type}-${p.Space}`} style={s.orderRow}>
           <Text style={s.orderText}>
             {p.Count} × {p.Type}
           </Text>
-          <Text style={s.orderPath}>{spaceName(catalog, p.Space)} ×</Text>
-        </Pressable>
+          <Text style={s.orderPath}>{spaceName(catalog, p.Space)}</Text>
+          <SmallButton
+            label="Remove"
+            tone="danger"
+            onPress={() => setPlacements((x) => x.filter((_, j) => j !== i))}
+          />
+        </View>
       ))}
       <Button
-        label="Submit placements"
+        label="Deploy"
         disabled={disabled || !placements.length}
         onPress={submit}
       />
@@ -1547,7 +1639,7 @@ function Lobby({
   busy: boolean;
   command: (t: string, p?: object) => Promise<boolean>;
 }) {
-  const narrow = useWindowDimensions().width < 900;
+  const narrow = useWindowDimensions().width < NARROW;
   return (
     <>
       <View style={s.boardSection}>
@@ -1556,9 +1648,9 @@ function Lobby({
       <View style={[s.grid, narrow && s.column]}>
         <View style={s.mainColumn}>
           <View style={s.card}>
-            <Text style={s.eyebrow}>COMMAND ROSTER</Text>
+            <Text style={s.eyebrow}>WHO'S HERE</Text>
             <Text style={s.cardTitle}>
-              {game.players.length} of 5 commanders assembled
+              {game.players.length} of 5 players here
             </Text>
             {game.players.map((p, i) => (
               <View key={p.id} style={s.playerRow}>
@@ -1570,13 +1662,14 @@ function Lobby({
           </View>
           {game.me.isOwner ? (
             <Button
-              label={busy ? "Starting..." : "Assign powers & start"}
+              label="Deal powers & start"
               onPress={() => void command("start_game")}
-              disabled={busy || game.players.length < 2}
+              loading={busy}
+              disabled={game.players.length < 2}
             />
           ) : (
             <Text style={s.notice}>
-              The host will start when everyone arrives.
+              Waiting for the host to kick things off.
             </Text>
           )}
         </View>
@@ -1585,7 +1678,7 @@ function Lobby({
             <Text style={s.eyebrow}>INVITE YOUR FRIENDS</Text>
             <Text style={s.inviteCode}>{game.joinCode}</Text>
             <Text style={s.subtitle}>
-              Share this private code. Supports 2-5 commanders.
+              Send this code to your friends. 2–5 players.
             </Text>
           </View>
           <Activity events={game.events} />
@@ -1602,6 +1695,9 @@ function ChipList({
   toggle,
   counts = false,
   disabledIds = [],
+  specs,
+  doomed = false,
+  atCap = false,
 }: {
   ids: string[];
   units: Record<string, WorldUnit>;
@@ -1609,22 +1705,64 @@ function ChipList({
   toggle: (id: string) => void;
   counts?: boolean;
   disabledIds?: string[];
+  /** Unit stats, so a casualty choice shows what it actually costs you. */
+  specs?: Record<string, { Cost: number; Attack: number; Defense: number }>;
+  /** Selected units are being sent to die, not merely picked. */
+  doomed?: boolean;
+  /** Every hit is already assigned — unselected chips stop responding, so the
+   *  click no longer silently no-ops with zero feedback. */
+  atCap?: boolean;
 }) {
+  // Multiple identical units in a space used to be told apart only by their
+  // internal id ("Infantry · u0213"), so they are numbered instead.
+  const ordinals: Record<string, number> = {};
+  const total: Record<string, number> = {};
+  for (const id of ids) {
+    const type = units[id]?.type || "Unit";
+    total[type] = (total[type] || 0) + 1;
+  }
   return (
     <View style={s.chips}>
       {ids.map((id, index) => {
         const count = selected.filter((x) => x === id).length;
+        const type = units[id]?.type || "Unit";
+        ordinals[type] = (ordinals[type] || 0) + 1;
+        const spec = specs?.[type];
+        const blocked = disabledIds.includes(id) || (atCap && count === 0);
         return (
           <Pressable
             key={`${id}-${index}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: count > 0, disabled: blocked }}
+            accessibilityLabel={type}
+            dataSet={{ class: blocked ? "fc-off" : "fc-press fc-glow" }}
             onPress={() => toggle(id)}
-            disabled={disabledIds.includes(id)}
-            style={[s.choiceChip, count > 0 && s.choiceChipActive]}
+            disabled={blocked}
+            style={[
+              s.choiceChip,
+              count > 0 && (doomed ? s.choiceChipDoomed : s.choiceChipActive),
+              blocked && s.choiceChipDisabled,
+            ]}
           >
             <Text style={s.choiceText}>
-              {units[id]?.type || id} · {id}
+              {doomed && count > 0 ? "💀 " : ""}
+              {type}
+              {total[type] > 1 ? ` ${ordinals[type]}` : ""}
               {counts && count > 1 ? ` ×${count}` : ""}
             </Text>
+            {!!spec && (
+              <View style={s.unitStats}>
+                <View style={s.unitStatItem}>
+                  <StatIcon kind="atk" tint={color.danger} />
+                  <Text style={s.chipStats}>{spec.Attack}</Text>
+                </View>
+                <View style={s.unitStatItem}>
+                  <StatIcon kind="def" tint={color.cyan} />
+                  <Text style={s.chipStats}>{spec.Defense}</Text>
+                </View>
+                <Text style={s.chipStats}>{spec.Cost} IPC</Text>
+              </View>
+            )}
           </Pressable>
         );
       })}
@@ -1721,7 +1859,7 @@ function RetreatDecision({
     );
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>RETREAT / {spaceName(catalog, territory)}</Text>
+      <Text style={s.eyebrow}>RETREAT · {spaceName(catalog, territory)}</Text>
       <Text style={s.subtitle}>
         Surface and land units retreat together. Aircraft remain in the battle
         space and complete landing during noncombat movement.
@@ -1880,14 +2018,18 @@ function StationaryTransportPanel({
   };
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>STATIONARY TRANSPORT</Text>
+      <Text style={s.eyebrow}>TRANSPORTS</Text>
       <Text style={s.subtitle}>
-        Load, unload, or bridge cargo without plotting a sea route.
+        Load or drop off cargo without moving the ship.
       </Text>
       <View style={s.chips}>
         {transports.map((u) => (
           <Pressable
             key={u.id}
+            accessibilityRole="button"
+            accessibilityLabel="Transport"
+            accessibilityState={{ selected: transportID === u.id }}
+            dataSet={{ class: "fc-press fc-glow" }}
             onPress={() => {
               setTransportID(u.id);
               setCargo([]);
@@ -1895,9 +2037,8 @@ function StationaryTransportPanel({
             }}
             style={[s.choiceChip, transportID === u.id && s.choiceChipActive]}
           >
-            <Text style={s.choiceText}>
-              {u.id} / {spaceName(catalog, u.space)}
-            </Text>
+            <Text style={s.choiceText}>Transport</Text>
+            <Text style={s.chipStats}>{spaceName(catalog, u.space)}</Text>
           </Pressable>
         ))}
       </View>
@@ -1911,7 +2052,7 @@ function StationaryTransportPanel({
             toggle={toggle}
             disabledIds={existing.map((u) => u.id)}
           />
-          <Text style={s.sectionLabel}>OPTIONAL UNLOAD</Text>
+          <Text style={s.sectionLabel}>DROP OFF · OPTIONAL</Text>
           <View style={s.chips}>
             {neighbors
               .filter(
@@ -1922,6 +2063,10 @@ function StationaryTransportPanel({
               .map((id) => (
                 <Pressable
                   key={id}
+                  accessibilityRole="button"
+                  accessibilityLabel={spaceName(catalog, id)}
+                  accessibilityState={{ selected: unload === id }}
+                  dataSet={{ class: "fc-press fc-glow" }}
                   onPress={() => setUnload(unload === id ? "" : id)}
                   style={[s.choiceChip, unload === id && s.choiceChipActive]}
                 >
@@ -1930,7 +2075,7 @@ function StationaryTransportPanel({
               ))}
           </View>
           <SmallButton
-            label="Submit stationary transport order"
+            label="Do it"
             disabled={disabled || selected.length === 0}
             onPress={() => void submit()}
           />
@@ -1986,15 +2131,19 @@ function IgnoreSeaUnitsPanel({
   };
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>IGNORE STEALTH UNITS</Text>
+      <Text style={s.eyebrow}>SNEAK PAST</Text>
       <Text style={s.subtitle}>
-        By default, enemy-only transports are destroyed and enemy submarines are
-        attacked. Select a zone to pass through or coexist without combat.
+        Normally you'd smash any lone enemy transports and hunt their subs. Pick
+        a zone to slip through without a fight instead.
       </Text>
       <View style={s.chips}>
         {candidates.map((id) => (
           <Pressable
             key={id}
+            accessibilityRole="button"
+            accessibilityLabel={spaceName(catalog, id)}
+            accessibilityState={{ selected: ignored.includes(id) }}
+            dataSet={{ class: "fc-press fc-glow" }}
             onPress={() =>
               setIgnored((current) =>
                 current.includes(id)
@@ -2009,7 +2158,7 @@ function IgnoreSeaUnitsPanel({
         ))}
       </View>
       <SmallButton
-        label="Submit drafted moves with ignore choices"
+        label="Send moves"
         disabled={disabled}
         onPress={() => void submit()}
       />
@@ -2020,15 +2169,23 @@ function IgnoreSeaUnitsPanel({
 function PowerLedger({ game }: { game: Game }) {
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>WORLD ECONOMY</Text>
+      <Text style={s.eyebrow}>WHO'S WINNING</Text>
       {Object.entries(game.state.ipcs).map(([power, ipc]) => (
         <View key={power} style={s.ledgerRow}>
-          <View>
-            <Text style={s.ledgerPower}>{power}</Text>
+          <View style={s.flex}>
+            <View style={s.ledgerPowerRow}>
+              <View
+                style={[
+                  s.ledgerSwatch,
+                  { backgroundColor: powerColor[power] || color.textDim },
+                ]}
+              />
+              <Text style={s.ledgerPower}>{power}</Text>
+            </View>
             <Text style={s.ledgerOwner}>
               {game.players.find((p) => p.powers.includes(power))?.name ||
-                "Unassigned"}{" "}
-              / income {game.state.income[power]}
+                "Nobody"}{" "}
+              · +{game.state.income[power]}/turn
             </Text>
           </View>
           <Text style={s.ledgerIPC}>{ipc}</Text>
@@ -2040,13 +2197,13 @@ function PowerLedger({ game }: { game: Game }) {
 function Activity({ events }: { events: GameEvent[] }) {
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>FIELD LOG</Text>
+      <Text style={s.eyebrow}>WHAT HAPPENED</Text>
       {events.slice(0, 10).map((e) => (
         <View key={e.sequence} style={s.event}>
           <View style={s.eventDot} />
           <View style={s.flex}>
             <Text style={s.eventText}>{e.message}</Text>
-            <Text style={s.eventTime}>{new Date(e.at).toLocaleString()}</Text>
+            <Text style={s.eventTime}>{timeAgo(e.at)}</Text>
           </View>
         </View>
       ))}
@@ -2056,7 +2213,7 @@ function Activity({ events }: { events: GameEvent[] }) {
 function InfoCard({ title, copy }: { title: string; copy: string }) {
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>PHASE CONTROL</Text>
+      <Text style={s.eyebrow}>UP NEXT</Text>
       <Text style={s.cardTitle}>{title}</Text>
       <Text style={s.subtitle}>{copy}</Text>
     </View>
@@ -2070,14 +2227,14 @@ function decisionDescription(
 ) {
   if (kind === "choose-casualties") {
     if (minHits !== undefined && minHits !== hits)
-      return `${power || "A defender"} must assign between ${minHits} and ${hits || 0} hit(s)`;
-    return `${power || "A defender"} must assign ${hits || 0} hit(s)`;
+      return `${power || "A defender"} takes ${minHits}–${hits || 0} hits — pick who falls`;
+    return `${power || "A defender"} takes ${plural(hits || 0, "hit")} — pick who falls`;
   }
   if (kind === "choose-submerge")
-    return "Choose submarines to submerge, or submit none";
+    return "Dive with your subs, or stay and fight";
   if (kind === "choose-fighter-landing")
-    return "Excess defending fighters must land one space away or be destroyed";
-  return `${power || "The attacker"} must retreat or continue fighting`;
+    return "Extra fighters must land one space away or they're lost";
+  return `${power || "The attacker"} can retreat or keep fighting`;
 }
 function casualtyHits(battle: Battle, units: Record<string, WorldUnit>) {
   const pending = battle.pendingDecision;
@@ -2092,19 +2249,212 @@ function casualtyHits(battle: Battle, units: Record<string, WorldUnit>) {
 function spaceName(catalog: BoardCatalog | null, id: string) {
   return catalog?.spaces.find((s) => s.id === id)?.name || id;
 }
+/** "just now" / "5m ago" — replaces raw `toLocaleString()` output. */
+function timeAgo(iso: string) {
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 45) return "just now";
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
+/** "1 hit" / "2 hits" — replaces the "1 hit(s)" style throughout. */
+function plural(n: number, one: string, many = `${one}s`) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+/** Player-facing name for a unit. The UI used to print internal keys such as
+ *  "Infantry · u0213", "Tank u0052" and "u0001 / 10 Sea Zone". */
+function unitLabel(units: Record<string, WorldUnit>, id: string) {
+  return units[id]?.type || "Unit";
+}
+function unitAt(
+  units: Record<string, WorldUnit>,
+  catalog: BoardCatalog | null,
+  id: string,
+) {
+  const u = units[id];
+  return u ? `${u.type} in ${spaceName(catalog, u.space)}` : "Unit";
+}
+/** The battle card printed `battle.stage` verbatim, surfacing raw tokens like
+ *  "aaa" and "queued" as "Round 1 / queued". */
+const stageCopy: Record<string, string> = {
+  aaa: "Anti-aircraft fire",
+  queued: "Waiting to start",
+  bombard: "Naval bombardment",
+  main: "Fighting",
+  complete: "Finished",
+};
+function stageLabel(stage: string) {
+  return stageCopy[stage] || stage;
+}
+/** Small icon+number stats, replacing the "A2 D2 M1" codes. Inline SVG rather
+ *  than emoji, which fall back to wildly different glyphs across platforms —
+ *  ⚔ renders as a pair of scissors in the default Linux fallback font. */
+function StatIcon({
+  kind,
+  tint,
+}: {
+  kind: "atk" | "def" | "mov";
+  tint: string;
+}) {
+  const paths = {
+    atk: "M13.5 2.5l2 2-7 7-2-2 7-7zM3 12l3 3-1.5 1.5L2 14l1-2z",
+    def: "M9 1.5l6 2.5v5c0 4-2.6 6.6-6 7.5-3.4-.9-6-3.5-6-7.5v-5l6-2.5z",
+    mov: "M2 9h11M9.5 5l4 4-4 4",
+  };
+  return (
+    <svg width="13" height="13" viewBox="0 0 18 18" aria-hidden="true">
+      <path
+        d={paths[kind]}
+        fill={kind === "mov" ? "none" : tint}
+        stroke={tint}
+        strokeWidth={kind === "mov" ? 2 : 1}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+/** One die face. Pips are drawn, not glyphs, so they read at 26px. */
+const PIPS: Record<number, [number, number][]> = {
+  1: [[1, 1]],
+  2: [
+    [0, 0],
+    [2, 2],
+  ],
+  3: [
+    [0, 0],
+    [1, 1],
+    [2, 2],
+  ],
+  4: [
+    [0, 0],
+    [2, 0],
+    [0, 2],
+    [2, 2],
+  ],
+  5: [
+    [0, 0],
+    [2, 0],
+    [1, 1],
+    [0, 2],
+    [2, 2],
+  ],
+  6: [
+    [0, 0],
+    [2, 0],
+    [0, 1],
+    [2, 1],
+    [0, 2],
+    [2, 2],
+  ],
+};
+function Die({ value, delay }: { value: number; delay: number }) {
+  return (
+    <svg
+      width="26"
+      height="26"
+      viewBox="0 0 30 30"
+      className="fc-tumble"
+      style={{ animationDelay: `${delay}ms`, flexShrink: 0 }}
+      aria-label={`Rolled ${value}`}
+    >
+      <rect
+        width="30"
+        height="30"
+        rx="7"
+        fill={color.text}
+        stroke={color.violetDeep}
+        strokeWidth="1.5"
+      />
+      {(PIPS[value] || []).map(([cx, cy], i) => (
+        <circle
+          key={i}
+          cx={6 + cx * 9}
+          cy={6 + cy * 9}
+          r="2.7"
+          fill={color.bgDeep}
+        />
+      ))}
+    </svg>
+  );
+}
+/** The real transcript the server already sends — no invented results.
+ *  The server emits one entry per firing unit, so "attacker regular fire
+ *  Infantry" x3 collapses into a single attacker row of three dice. */
+function DiceStrip({ rolls }: { rolls: DiceRoll[] }) {
+  if (!rolls.length) return null;
+  const side = (purpose: string) =>
+    purpose.startsWith("attacker")
+      ? "Attackers"
+      : purpose.startsWith("defender")
+        ? "Defenders"
+        : purpose.replace(/^\w/, (m) => m.toUpperCase());
+  const groups: { label: string; faces: number[] }[] = [];
+  for (const roll of rolls) {
+    const label = side(roll.purpose);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.faces.push(...roll.results);
+    else groups.push({ label, faces: [...roll.results] });
+  }
+  return (
+    <View style={s.diceBlock}>
+      <Text style={s.diceHeading}>THE DICE</Text>
+      {groups.slice(-3).map((group, i) => (
+        <View key={`${group.label}-${i}`} style={s.diceRow}>
+          <Text style={s.dicePurpose}>{group.label}</Text>
+          <View style={s.diceFaces}>
+            {group.faces.map((value, j) => (
+              <Die key={j} value={value} delay={j * 70} />
+            ))}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+function StatPips({
+  attack,
+  defense,
+  move,
+}: {
+  attack: number;
+  defense: number;
+  move: number;
+}) {
+  return (
+    <View
+      style={s.unitStats}
+      accessibilityLabel={`Attack ${attack}, defence ${defense}, move ${move}`}
+    >
+      <View style={s.unitStatItem}>
+        <StatIcon kind="atk" tint={color.danger} />
+        <Text style={s.unitStat}>{attack}</Text>
+      </View>
+      <View style={s.unitStatItem}>
+        <StatIcon kind="def" tint={color.cyan} />
+        <Text style={s.unitStat}>{defense}</Text>
+      </View>
+      <View style={s.unitStatItem}>
+        <StatIcon kind="mov" tint={color.lime} />
+        <Text style={s.unitStat}>{move}</Text>
+      </View>
+    </View>
+  );
+}
 function Brand() {
   return (
     <View style={s.brandRow}>
       <View style={s.brandMark}>
-        <Text style={s.brandLetter}>F</Text>
+        <Text style={s.brandLetter}>◆</Text>
       </View>
-      <Text style={s.brand}>FRONTLINE COMMAND</Text>
+      <Text style={s.brand}>FRONTLINE</Text>
     </View>
   );
 }
 function Shell({ children }: { children: React.ReactNode }) {
   return <View style={s.shell}>{children}</View>;
 }
+let fieldSeq = 0;
 function Field({
   label,
   value,
@@ -2116,15 +2466,25 @@ function Field({
   onChange: (v: string) => void;
   placeholder: string;
 }) {
+  // Inputs previously had no label association at all: a <Text> floating above a
+  // <TextInput>, no id/htmlFor, no aria-label. Screen readers announced nothing.
+  const [id] = useState(() => `fc-field-${++fieldSeq}`);
+  const [focused, setFocused] = useState(false);
   return (
     <View style={s.field}>
-      <Text style={s.label}>{label}</Text>
+      <Text nativeID={id} style={s.label}>
+        {label}
+      </Text>
       <TextInput
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
-        placeholderTextColor="#7d847e"
-        style={s.input}
+        placeholderTextColor={color.textDim}
+        accessibilityLabel={label}
+        accessibilityLabelledBy={id}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={[s.input, focused && s.inputFocused]}
       />
     </View>
   );
@@ -2133,23 +2493,38 @@ function Button({
   label,
   onPress,
   disabled = false,
+  loading = false,
+  tone = "primary",
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  loading?: boolean;
+  tone?: "primary" | "ghost";
 }) {
+  const dead = disabled || loading;
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: dead, busy: loading }}
       onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
+      disabled={dead}
+      // `fc-press`/`fc-lift` carry the hover + press transitions; RNW cannot
+      // express :hover from the style prop.
+      dataSet={{ class: dead ? "fc-press fc-off" : "fc-press fc-lift" }}
+      style={[
         s.button,
-        disabled && s.disabled,
-        pressed && s.pressed,
+        tone === "ghost" && s.buttonGhost,
+        dead && s.buttonDisabled,
       ]}
     >
-      <Text style={s.buttonText}>{label}</Text>
-      <Text style={s.buttonArrow}>→</Text>
+      <Text style={[s.buttonText, dead && s.buttonTextDisabled]}>{label}</Text>
+      {loading ? (
+        <View dataSet={{ class: "fc-spin" }} style={s.spinner} />
+      ) : (
+        <Text style={[s.buttonArrow, dead && s.buttonTextDisabled]}>→</Text>
+      )}
     </Pressable>
   );
 }
@@ -2157,18 +2532,38 @@ function SmallButton({
   label,
   onPress,
   disabled = false,
+  tone = "default",
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  tone?: "default" | "danger";
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
       onPress={onPress}
       disabled={disabled}
-      style={[s.smallButton, disabled && s.disabled]}
+      dataSet={{ class: disabled ? "fc-press fc-off" : "fc-press fc-glow" }}
+      // Without alignSelf this stretched to the full card width whenever it sat
+      // in a column parent (e.g. "Add placement", "Start battle with selection").
+      style={[
+        s.smallButton,
+        tone === "danger" && s.smallButtonDanger,
+        disabled && s.smallButtonDisabled,
+      ]}
     >
-      <Text style={s.smallButtonText}>{label}</Text>
+      <Text
+        style={[
+          s.smallButtonText,
+          tone === "danger" && s.smallButtonTextDanger,
+          disabled && s.smallButtonTextDisabled,
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -2182,510 +2577,643 @@ function Tab({
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={[s.tab, active && s.tabActive]}>
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      dataSet={{ class: "fc-press" }}
+      style={[s.tab, active && s.tabActive]}
+    >
       <Text style={[s.tabText, active && s.tabTextActive]}>{label}</Text>
     </Pressable>
   );
 }
 function StatusPill({ status }: { status: string }) {
+  const live = status === "active";
   return (
-    <View style={s.status}>
-      <View style={s.statusDot} />
-      <Text style={s.statusText}>{status.toUpperCase()}</Text>
+    <View style={[s.status, live && s.statusLive]}>
+      <View
+        dataSet={live ? { class: "fc-pulse" } : undefined}
+        style={[s.statusDot, live && s.statusDotLive]}
+      />
+      <Text style={[s.statusText, live && s.statusTextLive]}>
+        {status.toUpperCase()}
+      </Text>
     </View>
   );
 }
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <View accessibilityRole="alert" style={s.errorBanner}>
-      <Text style={s.errorTitle}>ORDER REJECTED</Text>
+    <View
+      accessibilityRole="alert"
+      dataSet={{ class: "fc-shake" }}
+      style={s.errorBanner}
+    >
+      <Text style={s.errorTitle}>THAT WON'T WORK</Text>
       <Text style={s.errorText}>{message}</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: "#101714" },
-  app: { flex: 1, backgroundColor: "#ece9df" },
+  page: { flex: 1, backgroundColor: color.bgDeep },
+  app: { flex: 1, backgroundColor: color.bg },
   flex: { flex: 1 },
   column: { flexDirection: "column" },
-  landing: { minHeight: "100%", flexDirection: "row" },
+
+  // ---- Landing ----------------------------------------------------------
+  // flexGrow (not minHeight:"100%") is what makes the split fill the viewport
+  // once #root is a flex container.
+  landing: { flexGrow: 1, flexDirection: "row" },
   hero: {
     flex: 1,
-    padding: 70,
-    justifyContent: "space-between",
-    backgroundColor: "#17211d",
-  },
-  heroNarrow: { padding: 28, minHeight: 530 },
-  access: {
-    width: "42%",
-    maxWidth: 620,
-    padding: 68,
+    padding: 64,
     justifyContent: "center",
-    backgroundColor: "#ece9df",
+    gap: space.xl,
+    backgroundColor: color.bgDeep,
+  },
+  heroNarrow: { padding: space.xxl, paddingVertical: 44, minHeight: 420 },
+  access: {
+    width: "44%",
+    maxWidth: 620,
+    padding: 56,
+    justifyContent: "center",
+    backgroundColor: color.bg,
+    borderLeftWidth: 1,
+    borderLeftColor: color.borderSoft,
   },
   accessNarrow: {
     width: "100%",
     maxWidth: "100%",
-    padding: 28,
-    minHeight: 540,
+    padding: space.xxl,
+    borderLeftWidth: 0,
+    borderTopWidth: 1,
+    borderTopColor: color.borderSoft,
   },
-  brandRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   brandMark: {
     width: 30,
     height: 30,
-    borderWidth: 1,
-    borderColor: "#d8a94d",
+    borderRadius: radius.sm,
+    backgroundColor: color.violet,
     alignItems: "center",
     justifyContent: "center",
-    transform: [{ rotate: "45deg" }],
   },
-  brandLetter: {
-    color: "#d8a94d",
-    fontFamily: "serif",
-    fontSize: 16,
-    transform: [{ rotate: "-45deg" }],
-  },
-  brand: {
-    fontSize: 11,
-    letterSpacing: 2.3,
-    fontWeight: "700",
-    color: "#d9ddd8",
-  },
-  kicker: {
-    color: "#d8a94d",
-    fontSize: 10,
-    letterSpacing: 2.5,
-    fontWeight: "700",
-    marginTop: 65,
-  },
+  brandLetter: { color: color.onAccent, fontSize: 13 },
+  brand: { ...t.label, color: color.text },
+  kicker: { ...t.label, color: color.cyan },
   heroTitle: {
-    fontFamily: "serif",
-    fontSize: 62,
-    lineHeight: 68,
-    color: "#f1eee5",
-    marginTop: 20,
+    ...t.display,
+    fontSize: 60,
+    lineHeight: 62,
+    letterSpacing: -1.6,
+    color: color.text,
   },
-  heroTitleNarrow: { fontSize: 43, lineHeight: 49 },
-  gold: { fontStyle: "italic", color: "#d8a94d" },
-  heroCopy: {
-    fontSize: 17,
-    lineHeight: 28,
-    color: "#aeb7b0",
-    maxWidth: 570,
-    marginTop: 25,
-  },
-  heroFoot: { fontSize: 9, letterSpacing: 2, color: "#7e8d84", marginTop: 60 },
-  eyebrow: {
-    fontSize: 10,
-    letterSpacing: 2.1,
-    fontWeight: "700",
-    color: "#9b792f",
-    marginBottom: 9,
-  },
-  panelTitle: {
-    fontFamily: "serif",
-    fontSize: 36,
-    color: "#16201c",
-    marginBottom: 26,
-  },
+  heroTitleNarrow: { fontSize: 38, lineHeight: 41, letterSpacing: -0.9 },
+  gold: { color: color.magenta },
+  heroCopy: { ...t.body, fontSize: 17, lineHeight: 27, color: color.textSoft, maxWidth: 540 },
+  heroFoot: { ...t.micro, color: color.textDim, letterSpacing: 0.6 },
+  eyebrow: { ...t.label, color: color.cyan },
+  panelTitle: { ...t.h1, color: color.text, marginBottom: space.xxl },
   tabs: {
     flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#cbc7bc",
-    marginBottom: 26,
+    gap: space.xs,
+    padding: space.xs,
+    borderRadius: radius.pill,
+    backgroundColor: color.surface,
+    marginBottom: space.xxl,
+    alignSelf: "flex-start",
   },
-  tab: { paddingVertical: 12, marginRight: 28 },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: "#9b792f" },
-  tabText: { fontSize: 12, color: "#72766f", fontWeight: "600" },
-  tabTextActive: { color: "#16201c" },
-  field: { marginBottom: 20 },
-  label: {
-    fontSize: 9,
-    letterSpacing: 1.8,
-    fontWeight: "700",
-    color: "#5a605b",
-    marginBottom: 8,
+  tab: {
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.pill,
   },
+  tabActive: { backgroundColor: color.violet },
+  tabText: { ...t.label, color: color.textSoft },
+  tabTextActive: { color: color.onAccent },
+  field: { marginBottom: space.xl },
+  label: { ...t.label, color: color.textSoft, marginBottom: space.sm },
   input: {
-    borderWidth: 1,
-    borderColor: "#b8b5ab",
-    backgroundColor: "#f7f5ee",
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    fontSize: 15,
-    color: "#17211d",
+    borderWidth: 2,
+    borderColor: color.border,
+    borderRadius: radius.md,
+    backgroundColor: color.surface,
+    paddingHorizontal: space.lg,
+    paddingVertical: 14,
+    ...t.body,
+    color: color.text,
   },
-  footnote: { fontSize: 11, color: "#757a73", marginTop: 18 },
+  inputFocused: { borderColor: color.cyan, backgroundColor: color.surface2 },
+  footnote: { ...t.micro, color: color.textDim, marginTop: space.lg },
   campaignSection: {
     borderTopWidth: 1,
-    borderTopColor: "#cbc7bc",
-    marginTop: 30,
-    paddingTop: 24,
-    gap: 10,
+    borderTopColor: color.borderSoft,
+    marginTop: space.xxxl,
+    paddingTop: space.xxl,
+    gap: space.md,
   },
   campaignCard: {
     borderWidth: 1,
-    borderColor: "#c9c5ba",
-    backgroundColor: "#f7f5ee",
+    borderColor: color.border,
+    borderRadius: radius.lg,
+    backgroundColor: color.surface,
+    overflow: "hidden",
   },
   campaignOpen: {
     minHeight: 68,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: space.lg,
   },
-  campaignName: {
-    fontFamily: "serif",
-    fontSize: 19,
-    color: "#18201d",
-    marginBottom: 4,
-  },
-  campaignMeta: {
-    fontSize: 9,
-    letterSpacing: 1.1,
-    color: "#687069",
-  },
-  campaignArrow: { color: "#9b792f", fontSize: 20 },
+  campaignName: { ...t.h3, color: color.text, marginBottom: 2 },
+  campaignMeta: { ...t.micro, color: color.textDim },
+  campaignArrow: { color: color.magenta, fontSize: 20 },
   campaignDelete: {
-    color: "#8f3d32",
-    fontSize: 10,
+    ...t.micro,
     fontWeight: "700",
-    paddingHorizontal: 14,
-    paddingBottom: 12,
+    color: color.danger,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.md,
   },
   deleteConfirm: {
     borderTopWidth: 1,
-    borderTopColor: "#d8c5bd",
-    backgroundColor: "#f4e9e4",
-    padding: 14,
+    borderTopColor: color.border,
+    backgroundColor: "rgba(255,77,94,.10)",
+    padding: space.lg,
+    borderRadius: radius.lg,
   },
-  deleteWarning: {
-    color: "#6e3028",
-    fontSize: 11,
-    lineHeight: 17,
-    marginBottom: 10,
-  },
-  confirmActions: { flexDirection: "row", gap: 8 },
+  deleteWarning: { ...t.body, color: color.text, marginBottom: space.md },
+  confirmActions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   unavailableCampaign: {
     borderWidth: 1,
-    borderColor: "#cbc7bc",
-    padding: 14,
-    gap: 10,
+    borderColor: color.borderSoft,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    gap: space.md,
   },
+
+  // ---- Shell / dashboard -------------------------------------------------
   topbar: {
-    minHeight: 58,
-    paddingHorizontal: 28,
-    backgroundColor: "#101714",
+    minHeight: 60,
+    paddingHorizontal: space.xxl,
+    backgroundColor: color.bgDeep,
+    borderBottomWidth: 1,
+    borderBottomColor: color.borderSoft,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  quietLink: { color: "#b9c1bb", fontSize: 11, letterSpacing: 1.1 },
+  quietLink: {
+    ...t.label,
+    color: color.textSoft,
+    minHeight: 44,
+    lineHeight: 44,
+    paddingHorizontal: space.sm,
+  },
   dashboard: {
     width: "100%",
-    maxWidth: 1440,
+    maxWidth: 1560,
     alignSelf: "center",
-    padding: 24,
-    gap: 18,
+    padding: space.xxl,
+    gap: space.lg,
   },
+  // flexWrap + a shrinkable text block: without them the 30px title refused to
+  // shrink and shoved the status pill off the right edge on phones.
   gameHeader: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 15,
+    gap: space.md,
   },
-  title: { fontFamily: "serif", fontSize: 39, color: "#18201d" },
-  subtitle: { fontSize: 12, lineHeight: 19, color: "#667069" },
-  code: { fontWeight: "800", letterSpacing: 2, color: "#29352f" },
+  gameHeaderText: { flex: 1, minWidth: 200 },
+  title: { ...t.h1, color: color.text },
+  subtitle: { ...t.body, color: color.textSoft },
+  code: {
+    fontWeight: "800",
+    letterSpacing: 1.6,
+    color: color.cyan,
+  },
   status: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: space.sm,
     borderWidth: 1,
-    borderColor: "#aeb5ad",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderColor: color.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    backgroundColor: color.surface,
+  },
+  statusLive: {
+    borderColor: "rgba(52,211,153,.5)",
+    backgroundColor: "rgba(52,211,153,.12)",
   },
   statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#638154",
+    width: 8,
+    height: 8,
+    borderRadius: radius.pill,
+    backgroundColor: color.textDim,
   },
-  statusText: {
-    fontSize: 9,
-    letterSpacing: 1.4,
-    fontWeight: "800",
-    color: "#3e4943",
-  },
+  statusDotLive: { backgroundColor: color.success },
+  statusText: { ...t.micro, fontWeight: "700", color: color.textSoft },
+  statusTextLive: { color: color.success },
+
   turnCard: {
-    backgroundColor: "#17211d",
-    padding: 24,
+    backgroundColor: color.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: color.border,
+    padding: space.xxl,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    borderLeftWidth: 4,
-    borderLeftColor: "#d8a94d",
+    gap: space.lg,
+    borderLeftWidth: 5,
+    boxShadow: shadow.card,
   },
-  turnPower: { fontFamily: "serif", fontSize: 31, color: "#f1eee5" },
-  ipcBadge: { alignItems: "center", minWidth: 80 },
-  ipcValue: { fontFamily: "serif", fontSize: 34, color: "#d8a94d" },
-  ipcLabel: { fontSize: 8, letterSpacing: 1.7, color: "#9eaaa2" },
+  turnCardMine: { borderLeftColor: color.magenta },
+  turnCardTheirs: { borderLeftColor: color.border },
+  turnPower: { ...t.display, fontSize: 34, lineHeight: 38, color: color.text },
+  ipcBadge: { alignItems: "center", minWidth: 92 },
+  ipcValue: {
+    ...t.display,
+    fontSize: 38,
+    lineHeight: 42,
+    color: color.tangerine,
+  },
+  ipcLabel: { ...t.micro, fontWeight: "700", color: color.textDim },
   phaseGuide: {
-    backgroundColor: "#f5f0df",
-    borderLeftWidth: 4,
-    borderLeftColor: "#aa8132",
-    paddingHorizontal: 16,
-    paddingVertical: 13,
+    backgroundColor: color.surface,
+    borderRadius: radius.lg,
+    borderLeftWidth: 5,
+    borderLeftColor: color.cyan,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
   },
-  phaseGuideTitle: {
-    color: "#9b792f",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  phaseGuideText: { color: "#424b46", fontSize: 12, lineHeight: 18 },
+  phaseGuideTitle: { ...t.label, color: color.cyan, marginBottom: space.xs },
+  phaseGuideText: { ...t.body, color: color.textSoft },
   boardSection: { width: "100%" },
-  grid: { flexDirection: "row", alignItems: "flex-start", gap: 18 },
-  mainColumn: { flex: 1, gap: 16 },
-  sideColumn: { width: 350, gap: 16 },
+  grid: { flexDirection: "row", alignItems: "stretch", gap: space.lg },
+  // alignSelf:"stretch" is what stops this collapsing to content width once the
+  // grid stacks into a column.
+  mainColumn: { flex: 1, alignSelf: "stretch", gap: space.lg },
+  sideColumn: { width: 360, gap: space.lg },
   sideWide: { width: "100%" },
-  stack: { gap: 16 },
+  stack: { gap: space.lg },
   card: {
-    backgroundColor: "#f8f6ef",
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: "#d2cfc5",
-    padding: 20,
+    borderColor: color.border,
+    borderRadius: radius.lg,
+    padding: space.xl,
+    boxShadow: shadow.card,
   },
-  cardTitle: {
-    fontFamily: "serif",
-    fontSize: 25,
-    color: "#18201d",
-    marginBottom: 7,
-  },
+  cardTitle: { ...t.h2, color: color.text, marginBottom: space.sm },
   cardHeading: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
+    gap: space.md,
   },
-  total: { fontFamily: "serif", fontSize: 22, color: "#9b792f" },
+  total: { ...t.h2, color: color.tangerine },
+
+  // ---- Buttons ------------------------------------------------------------
   button: {
-    minHeight: 49,
-    backgroundColor: "#9b792f",
-    paddingHorizontal: 17,
-    marginTop: 14,
+    minHeight: 52,
+    backgroundColor: color.violet,
+    borderRadius: radius.md,
+    paddingHorizontal: space.xl,
+    marginTop: space.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: space.md,
+    boxShadow: shadow.button,
   },
-  buttonText: {
-    color: "#fffaf0",
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+  buttonGhost: {
+    backgroundColor: "transparent",
+    borderWidth: 2,
+    borderColor: color.border,
+    boxShadow: "none",
   },
-  buttonArrow: { color: "#fff", fontSize: 18 },
-  smallButton: {
+  // A real disabled recipe rather than opacity:0.35, which made gold-on-cream
+  // read as a half-painted element at 1.72:1.
+  buttonDisabled: {
+    backgroundColor: color.surface2,
     borderWidth: 1,
-    borderColor: "#8e897d",
-    backgroundColor: "#f4f1e8",
-    minHeight: 34,
-    paddingHorizontal: 11,
+    borderColor: color.border,
+    boxShadow: "none",
+  },
+  buttonText: { ...t.label, fontSize: 14, color: color.onAccent },
+  buttonTextDisabled: { color: color.textSoft },
+  buttonArrow: { color: color.onAccent, fontSize: 18 },
+  spinner: {
+    width: 15,
+    height: 15,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,.28)",
+    borderTopColor: color.onAccent,
+  },
+  smallButton: {
+    alignSelf: "flex-start",
+    borderWidth: 2,
+    borderColor: color.border,
+    borderRadius: radius.sm,
+    backgroundColor: color.surface2,
+    minHeight: 44,
+    paddingHorizontal: space.lg,
     alignItems: "center",
     justifyContent: "center",
   },
-  smallButtonText: { fontSize: 10, fontWeight: "800", color: "#343c37" },
-  disabled: { opacity: 0.35 },
-  pressed: { opacity: 0.75 },
+  smallButtonDanger: {
+    borderColor: "rgba(255,77,94,.55)",
+    backgroundColor: "rgba(255,77,94,.14)",
+  },
+  smallButtonDisabled: {
+    backgroundColor: color.surface,
+    borderColor: color.borderSoft,
+  },
+  smallButtonText: { ...t.label, color: color.text },
+  smallButtonTextDanger: { color: color.danger },
+  smallButtonTextDisabled: { color: color.textDim },
+  disabled: { opacity: 0.45 },
+  pressed: { opacity: 0.9 },
+
+  // ---- Banners ------------------------------------------------------------
   errorBanner: {
-    backgroundColor: "#f4ded7",
-    borderLeftWidth: 4,
-    borderLeftColor: "#a94135",
-    padding: 14,
+    backgroundColor: "rgba(255,77,94,.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,77,94,.5)",
+    borderRadius: radius.md,
+    borderLeftWidth: 5,
+    borderLeftColor: color.danger,
+    padding: space.lg,
   },
-  errorTitle: {
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    color: "#8d2e27",
-    marginBottom: 4,
-  },
-  errorText: { fontSize: 13, color: "#672a26" },
+  errorTitle: { ...t.label, color: color.danger, marginBottom: space.xs },
+  errorText: { ...t.body, color: color.text },
   noticeBanner: {
-    backgroundColor: "#dfe9dc",
-    borderLeftWidth: 4,
-    borderLeftColor: "#65805c",
-    padding: 12,
+    backgroundColor: "rgba(52,211,153,.12)",
+    borderRadius: radius.md,
+    borderLeftWidth: 5,
+    borderLeftColor: color.success,
+    padding: space.md,
+    paddingHorizontal: space.lg,
   },
-  noticeText: { fontSize: 12, color: "#3d5437" },
+  noticeText: { ...t.body, color: color.textSoft },
   decisionAlert: {
-    backgroundColor: "#fff0c9",
+    backgroundColor: "rgba(233,53,193,.14)",
     borderWidth: 1,
-    borderColor: "#cf9f34",
-    padding: 14,
+    borderColor: "rgba(233,53,193,.5)",
+    borderRadius: radius.md,
+    padding: space.lg,
   },
-  decisionTitle: {
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1.3,
-    color: "#725416",
+  decisionTitle: { ...t.label, color: color.magenta },
+  decisionCopy: { ...t.body, color: color.text, marginTop: space.xs },
+
+  // ---- Purchase -----------------------------------------------------------
+  unitGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space.md,
+    marginTop: space.lg,
   },
-  decisionCopy: { fontSize: 13, color: "#4e4021", marginTop: 4 },
-  unitGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 },
+  // flexBasis + flexGrow instead of a fixed width:150, which left ragged last
+  // rows and ~190px of dead gutter at phone widths.
   unit: {
-    width: 150,
+    flexBasis: 158,
+    flexGrow: 1,
+    minWidth: 158,
     borderWidth: 1,
-    borderColor: "#d4d0c5",
-    padding: 10,
-    backgroundColor: "#eeece4",
+    borderColor: color.border,
+    borderRadius: radius.md,
+    padding: space.md,
+    backgroundColor: color.surface2,
   },
-  unitTop: { flexDirection: "row", justifyContent: "space-between", gap: 5 },
-  unitName: { fontSize: 10, fontWeight: "800", color: "#242d28", flex: 1 },
-  unitCost: { fontFamily: "serif", fontSize: 17, color: "#9b792f" },
-  unitStats: { fontSize: 9, color: "#747b75", marginTop: 5 },
+  unitTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: space.sm,
+  },
+  unitName: { ...t.bodyEm, fontSize: 14, color: color.text, flex: 1 },
+  unitCost: { ...t.h3, color: color.tangerine },
+  unitStats: {
+    flexDirection: "row",
+    gap: space.sm,
+    marginTop: space.sm,
+    flexWrap: "wrap",
+  },
+  unitStat: { ...t.micro, fontWeight: "700", color: color.textSoft },
+  unitStatItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   stepper: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 6,
-    marginTop: 7,
+    gap: space.sm,
+    marginTop: space.md,
   },
   stepCount: {
-    minWidth: 22,
+    minWidth: 26,
     textAlign: "center",
-    fontWeight: "800",
-    fontSize: 12,
-    color: "#27312b",
+    ...t.h3,
+    color: color.text,
   },
   sectionLabel: {
-    fontSize: 9,
-    letterSpacing: 1.5,
-    fontWeight: "800",
-    color: "#77736a",
-    marginTop: 18,
-    marginBottom: 8,
+    ...t.label,
+    color: color.textSoft,
+    marginTop: space.lg,
+    marginBottom: space.sm,
   },
   repairRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: space.md,
     borderTopWidth: 1,
-    borderTopColor: "#ddd9ce",
-    paddingVertical: 8,
+    borderTopColor: color.borderSoft,
+    paddingVertical: space.md,
   },
-  draft: { backgroundColor: "#e7e3d7", padding: 12, marginTop: 14, gap: 9 },
-  draftText: { fontSize: 12, color: "#35413b", fontWeight: "600" },
-  inline: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  draft: {
+    backgroundColor: color.surface2,
+    borderRadius: radius.md,
+    padding: space.md,
+    marginTop: space.md,
+    gap: space.sm,
+  },
+  draftText: { ...t.bodyEm, color: color.text },
+  inline: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   orderRow: {
     borderBottomWidth: 1,
-    borderBottomColor: "#ddd9ce",
-    paddingVertical: 10,
+    borderBottomColor: color.borderSoft,
+    paddingVertical: space.md,
     flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
+    alignItems: "center",
+    gap: space.md,
   },
-  orderText: { fontSize: 12, fontWeight: "700", color: "#2a342f" },
-  orderPath: { fontSize: 10, color: "#6b746e", textAlign: "right", flex: 1 },
-  hint: { fontSize: 10, lineHeight: 15, color: "#7d837e", marginTop: 7 },
-  battle: { borderTopWidth: 1, borderTopColor: "#d4d0c5", paddingVertical: 15 },
-  battleName: { fontFamily: "serif", fontSize: 20, color: "#1e2823" },
-  pending: { marginTop: 12, padding: 12, backgroundColor: "#eee4c9" },
-  pendingTitle: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#514325",
-    marginBottom: 8,
+  orderText: { ...t.bodyEm, color: color.text },
+  orderPath: { ...t.micro, color: color.textSoft, flex: 1 },
+  hint: { ...t.micro, color: color.textDim, marginTop: space.sm },
+
+  // ---- Combat -------------------------------------------------------------
+  battle: {
+    borderTopWidth: 1,
+    borderTopColor: color.borderSoft,
+    paddingVertical: space.lg,
   },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginVertical: 9 },
+  battleName: { ...t.h2, color: color.text },
+  pending: {
+    marginTop: space.md,
+    padding: space.md,
+    borderRadius: radius.md,
+    backgroundColor: color.surface2,
+  },
+  pendingTitle: { ...t.label, color: color.text, marginBottom: space.sm },
+  chips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space.sm,
+    marginVertical: space.md,
+  },
   choiceChip: {
-    borderWidth: 1,
-    borderColor: "#aaa69b",
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    backgroundColor: "#f7f4eb",
+    borderWidth: 2,
+    borderColor: color.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: 44,
+    justifyContent: "center",
+    backgroundColor: color.surface2,
   },
-  choiceChipActive: { borderColor: "#9b792f", backgroundColor: "#e7d6a9" },
-  choiceText: { fontSize: 9, fontWeight: "700", color: "#343b37" },
+  choiceChipActive: {
+    borderColor: color.cyan,
+    backgroundColor: "rgba(34,211,238,.22)",
+  },
+  choiceChipDoomed: {
+    borderColor: color.danger,
+    backgroundColor: "rgba(255,77,94,.22)",
+  },
+  choiceChipDisabled: { opacity: 0.4, borderColor: color.borderSoft },
+  choiceText: { ...t.micro, fontWeight: "700", color: color.text },
+  chipStats: { ...t.micro, fontSize: 11, color: color.textSoft, marginTop: 2 },
+  diceBlock: {
+    marginTop: space.md,
+    padding: space.md,
+    borderRadius: radius.md,
+    backgroundColor: color.surface2,
+    gap: space.sm,
+  },
+  diceHeading: { ...t.label, color: color.textSoft, marginBottom: space.xs },
+  diceRow: { gap: space.xs },
+  dicePurpose: { ...t.micro, color: color.textSoft },
+  diceFaces: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   raidRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: space.md,
     borderTopWidth: 1,
-    borderTopColor: "#d8d4c9",
-    paddingVertical: 10,
+    borderTopColor: color.borderSoft,
+    paddingVertical: space.md,
   },
+
+  // ---- Ledger / activity --------------------------------------------------
   ledgerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: space.md,
     borderTopWidth: 1,
-    borderTopColor: "#dedbd1",
-    paddingVertical: 11,
+    borderTopColor: color.borderSoft,
+    paddingVertical: space.md,
   },
-  ledgerPower: { fontSize: 11, fontWeight: "800", color: "#26312b" },
-  ledgerOwner: { fontSize: 9, color: "#7a817c", marginTop: 3 },
-  ledgerIPC: { fontFamily: "serif", fontSize: 22, color: "#9b792f" },
+  ledgerPowerRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  ledgerSwatch: { width: 10, height: 10, borderRadius: radius.pill },
+  ledgerPower: { ...t.bodyEm, color: color.text },
+  ledgerOwner: { ...t.micro, color: color.textSoft, marginTop: 2 },
+  ledgerIPC: { ...t.h2, color: color.tangerine },
   event: {
     flexDirection: "row",
-    gap: 9,
-    paddingVertical: 9,
+    gap: space.md,
+    paddingVertical: space.md,
     borderTopWidth: 1,
-    borderTopColor: "#dfdcd3",
+    borderTopColor: color.borderSoft,
   },
   eventDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#9b792f",
-    marginTop: 5,
+    width: 7,
+    height: 7,
+    borderRadius: radius.pill,
+    backgroundColor: color.magenta,
+    marginTop: 7,
   },
-  eventText: { fontSize: 11, lineHeight: 16, color: "#3e4742" },
-  eventTime: { fontSize: 8, color: "#8b918c", marginTop: 3 },
+  eventText: { ...t.body, fontSize: 14, lineHeight: 20, color: color.textSoft },
+  eventTime: { ...t.micro, color: color.textDim, marginTop: 2 },
+
+  // ---- Lobby --------------------------------------------------------------
   playerRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: space.md,
     borderTopWidth: 1,
-    borderTopColor: "#ddd9ce",
-    paddingVertical: 14,
+    borderTopColor: color.borderSoft,
+    paddingVertical: space.lg,
   },
-  playerNumber: {
-    fontFamily: "serif",
-    fontSize: 16,
-    color: "#9b792f",
-    width: 42,
+  playerNumber: { ...t.h3, color: color.magenta, width: 34 },
+  playerName: { flex: 1, ...t.bodyEm, color: color.text },
+  playerRole: {
+    ...t.micro,
+    fontWeight: "700",
+    color: color.textSoft,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    overflow: "hidden",
   },
-  playerName: { flex: 1, fontSize: 13, fontWeight: "700", color: "#28322d" },
-  playerRole: { fontSize: 8, letterSpacing: 1.3, color: "#727a74" },
   inviteCode: {
-    fontFamily: "serif",
-    fontSize: 42,
-    letterSpacing: 6,
-    color: "#9b792f",
-    marginVertical: 10,
+    ...t.display,
+    fontSize: 44,
+    lineHeight: 50,
+    letterSpacing: 5,
+    color: color.cyan,
+    marginVertical: space.md,
   },
   notice: {
-    fontSize: 12,
-    color: "#6f7771",
-    padding: 15,
-    backgroundColor: "#ddd9ce",
+    ...t.body,
+    color: color.textSoft,
+    padding: space.lg,
+    borderRadius: radius.md,
+    backgroundColor: color.surface2,
   },
   dangerLink: {
-    fontSize: 10,
-    color: "#8b3a32",
-    textDecorationLine: "underline",
-    marginVertical: 10,
+    ...t.label,
+    color: color.danger,
+    minHeight: 44,
+    lineHeight: 44,
+    paddingHorizontal: space.sm,
+  },
+  dangerRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: space.lg,
+    marginTop: space.sm,
   },
   shell: {
     flex: 1,
-    padding: 35,
+    padding: space.xxxl,
     justifyContent: "center",
-    gap: 15,
-    backgroundColor: "#ece9df",
+    gap: space.lg,
+    backgroundColor: color.bg,
   },
 });
 

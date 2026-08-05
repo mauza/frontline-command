@@ -27,6 +27,8 @@ export type PendingDecision = {
   group?: number;
 };
 
+export type DiceRoll = { purpose: string; results: number[] };
+
 export type Battle = {
   territory: string;
   attacker: string;
@@ -37,6 +39,9 @@ export type Battle = {
   bombarders?: string[];
   stage: string;
   started?: boolean;
+  /** The server has always sent this; the UI never showed it, so combat
+   *  resolved invisibly and reported only "complete · Germany" in grey text. */
+  diceTranscript?: DiceRoll[];
 };
 
 export type BoardSpace = {

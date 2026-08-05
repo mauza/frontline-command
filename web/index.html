@@ -2,10 +2,38 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#101714" />
-    <meta name="description" content="A private war room for asynchronous Axis & Allies Classic games." />
-    <title>Frontline Command</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0B0A1A" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Axis & Allies 1942 online with your friends. Play a turn whenever you want." />
+    <title>Frontline — Axis &amp; Allies 1942 with your friends</title>
+
+    <!-- Inline SVG favicon: the app previously shipped no icon at all and
+         /favicon.ico 404'd on every page load. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237C3AED'/%3E%3Cpath d='M16 8l6 8-6 8-6-8z' fill='%23fff'/%3E%3C/svg%3E"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%230B0A1A'/%3E%3Cpath d='M90 40l34 50-34 50-34-50z' fill='%237C3AED'/%3E%3C/svg%3E"
+    />
+
+    <!-- Discord is where these invites actually get pasted, so the link needs
+         to unfurl into something rather than a bare URL. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Frontline" />
+    <meta property="og:title" content="Take over the whole world." />
+    <meta
+      property="og:description"
+      content="Axis &amp; Allies 1942 online with your friends. Play a turn whenever you want — the game waits for you."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Take over the whole world." />
+    <meta
+      name="twitter:description"
+      content="Axis &amp; Allies 1942 online with your friends. Play a turn whenever you want."
+    />
   </head>
   <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
 </html>

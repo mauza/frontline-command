@@ -1,16 +1,101 @@
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource-variable/bricolage-grotesque/index.css";
+
 * { box-sizing: border-box; }
-html, body, #root { margin: 0; min-height: 100%; height: 100%; }
-body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #101714; }
-button, input { font: inherit; }
-::selection { background: #d8a94d; color: #101714; }
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #17211d; }
-::-webkit-scrollbar-thumb { background: #66736c; border: 2px solid #17211d; }
-[role="button"]:focus-visible { outline: 2px solid #e2b85d !important; outline-offset: 2px; }
-@media (max-width: 850px) {
-  #root > div > div { max-width: 100%; }
+
+html, body { margin: 0; min-height: 100%; height: 100%; }
+
+/* #root must be a flex container: the app's root ScrollView carries flex:1, and
+   with the default `display:block` that resolved to nothing, so the whole page
+   collapsed to its content height and left ~47% of the landing viewport as bare
+   dark void. */
+#root { margin: 0; height: 100%; display: flex; flex-direction: column; }
+
+body {
+  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+  background: #0B0A1A;
+  color: #F4F1FF;
 }
-@media (max-width: 700px) {
-  body { overflow-x: hidden; }
-  [role="button"] { -webkit-tap-highlight-color: transparent; }
+
+button, input { font: inherit; }
+
+::selection { background: #E935C1; color: #FFFFFF; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #12102B; }
+::-webkit-scrollbar-thumb { background: #3D3480; border-radius: 999px; border: 2px solid #12102B; }
+::-webkit-scrollbar-thumb:hover { background: #4C4299; }
+
+/* React Native Web's Pressable renders a bare <div tabindex="0"> with no role,
+   so the old `[role="button"]` selector matched literally nothing in the DOM and
+   every control fell back to Chrome's 1px black hairline. Pressables now set
+   accessibilityRole, and this covers anything else focusable too. */
+[role="button"]:focus-visible,
+[tabindex="0"]:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 3px solid #22D3EE !important;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+[role="button"] { -webkit-tap-highlight-color: transparent; }
+
+/* Interactive polish. RNW emits inline styles, so these are applied by class
+   from the component layer. */
+.fc-press {
+  transition:
+    transform 120ms cubic-bezier(.2,0,0,1),
+    box-shadow 120ms cubic-bezier(.2,0,0,1),
+    background-color 120ms cubic-bezier(.2,0,0,1),
+    border-color 120ms cubic-bezier(.2,0,0,1),
+    filter 120ms cubic-bezier(.2,0,0,1);
+}
+.fc-lift:hover { transform: translateY(-1px); filter: brightness(1.12); }
+.fc-lift:active { transform: translateY(3px); }
+.fc-off { cursor: not-allowed; }
+.fc-glow:hover { filter: brightness(1.18); border-color: #6F63C4 !important; }
+
+@keyframes fc-rise {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fc-pop {
+  0% { transform: scale(.86); opacity: 0; }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes fc-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+@keyframes fc-tumble {
+  0% { transform: rotate(-160deg) scale(.5); opacity: 0; }
+  70% { transform: rotate(12deg) scale(1.12); opacity: 1; }
+  100% { transform: rotate(0deg) scale(1); opacity: 1; }
+}
+@keyframes fc-march { to { stroke-dashoffset: -70; } }
+@keyframes fc-pulse {
+  0%, 100% { opacity: .4; }
+  50% { opacity: 1; }
+}
+@keyframes fc-spin { to { transform: rotate(360deg); } }
+
+.fc-rise { animation: fc-rise 220ms cubic-bezier(.2,0,0,1) both; }
+.fc-pop { animation: fc-pop 420ms cubic-bezier(.34,1.56,.64,1) both; }
+.fc-shake { animation: fc-shake 420ms cubic-bezier(.2,0,0,1) both; }
+.fc-tumble { animation: fc-tumble 520ms cubic-bezier(.34,1.56,.64,1) both; }
+.fc-march { animation: fc-march 900ms linear infinite; }
+.fc-pulse { animation: fc-pulse 1.6s ease-in-out infinite; }
+.fc-spin { animation: fc-spin 700ms linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }

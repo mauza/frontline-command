@@ -7,6 +7,7 @@ import {
   View,
 } from "react-native";
 import { groupUnitStacks, type UnitStack } from "./mapUnits";
+import { NARROW, color, powerColor, radius, type as t } from "./theme";
 import type { BoardCatalog, BoardSpace, WorldUnit } from "./types";
 
 type MapView = { x: number; y: number; width: number; height: number };
@@ -34,13 +35,9 @@ type Props = {
 const BOARD_WIDTH = 3500,
   BOARD_HEIGHT = 2000,
   MIN_WIDTH = 720;
-export const powerColors: Record<string, string> = {
-  "Soviet Union": "#a9423d",
-  Germany: "#626966",
-  "United Kingdom": "#9f753e",
-  Japan: "#d3aa43",
-  "United States": "#747b43",
-};
+// Single source in theme.ts so a power looks identical on the map, in the
+// ledger, and on every chip.
+export const powerColors = powerColor;
 const abbreviations: Record<string, string> = {
   Infantry: "INF",
   Artillery: "ART",
@@ -86,7 +83,7 @@ export function Board({
     anchor: { x: 0, y: 0 },
     moved: false,
   });
-  const narrow = useWindowDimensions().width < 700;
+  const narrow = useWindowDimensions().width < NARROW;
   const stacksBySpace = useMemo(() => groupUnitStacks(units), [units]);
   useEffect(() => {
     const controller = new AbortController();
@@ -137,10 +134,13 @@ export function Board({
   if (!catalog)
     return (
       <View style={styles.loading}>
+        {!loadError && (
+          <View dataSet={{ class: "fc-spin" }} style={styles.loadingDot} />
+        )}
         <Text style={styles.empty}>
           {loadError
-            ? "The theater map could not be loaded."
-            : "Plotting the 1942 theater..."}
+            ? "Couldn't load the map. Try refreshing."
+            : "Spinning up the world…"}
         </Text>
       </View>
     );
@@ -154,23 +154,28 @@ export function Board({
     setSelectedID(space.id);
     onSpacePress?.(space, catalog);
   };
+  // Exactly one territory carries tabIndex=0 at a time.
+  const focusedSpaceID = selectedID || catalog.spaces[0]?.id;
   const routeSet = new Set(route),
     highlightSet = new Set(highlightedSpaces),
-    showUnitTypes = view.width <= 2200;
+    // Raised from 2200: at the default FIT view (width 3500) the map showed no
+    // unit types at all, just a field of identical number badges.
+    showUnitTypes = view.width <= 3600;
   return (
     <View style={styles.frame}>
       <View style={[styles.toolbar, narrow && styles.toolbarNarrow]}>
         <View>
           <Text style={styles.eyebrow}>1942 SECOND EDITION</Text>
           <Text style={[styles.heading, narrow && styles.headingNarrow]}>
-            World theater
+            The world
           </Text>
         </View>
         <View style={styles.controls}>
-          <MapButton label="-" onPress={() => zoomAt(1.35)} />
-          <MapButton label="+" onPress={() => zoomAt(0.72)} />
+          <MapButton label="−" title="Zoom out" onPress={() => zoomAt(1.35)} />
+          <MapButton label="+" title="Zoom in" onPress={() => zoomAt(0.72)} />
           <MapButton
             label="FIT"
+            title="Fit the whole map"
             onPress={() =>
               setView({ x: 0, y: 0, width: BOARD_WIDTH, height: BOARD_HEIGHT })
             }
@@ -178,23 +183,52 @@ export function Board({
         </View>
       </View>
       <View style={[styles.mapWrap, narrow && styles.mapWrapNarrow]}>
+        {/* The hint used to read "SELECT ANY TERRITORY FOR DETAILS" even after
+            you had selected one. It now tracks the actual state. */}
         <View style={styles.mapHint} pointerEvents="none">
           <Text style={styles.mapHintText}>
             {canSelectUnits
-              ? "SELECT TERRITORY / CHOOSE UNITS / PLOT ROUTE"
-              : "SELECT ANY TERRITORY FOR DETAILS"}
+              ? selectedUnitIds.length
+                ? route.length > 1
+                  ? "KEEP CLICKING TO EXTEND · ADD ROUTE WHEN DONE"
+                  : "NOW CLICK AN ADJACENT SPACE"
+                : selected
+                  ? "PICK YOUR UNITS BELOW"
+                  : "TAP A TERRITORY TO START"
+              : selected
+                ? selected.name.toUpperCase()
+                : "TAP ANY TERRITORY"}
           </Text>
         </View>
         <svg
           aria-label="Interactive Axis and Allies theater map"
           role="application"
           viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
+          preserveAspectRatio={narrow ? "xMidYMid slice" : "xMidYMid meet"}
           style={{
             width: "100%",
             height: "100%",
             display: "block",
             touchAction: "none",
             cursor: "grab",
+          }}
+          // role="application" tells screen readers the app owns every
+          // keystroke, but the map previously implemented none — you could
+          // select a space and then had no way to pan or zoom to see it.
+          onKeyDown={(e) => {
+            const step = view.width * 0.2;
+            const pan = (dx: number, dy: number) => {
+              e.preventDefault();
+              setView((c) => clamp({ ...c, x: c.x + dx, y: c.y + dy }));
+            };
+            if (e.key === "ArrowLeft") pan(-step, 0);
+            else if (e.key === "ArrowRight") pan(step, 0);
+            else if (e.key === "ArrowUp") pan(0, -step);
+            else if (e.key === "ArrowDown") pan(0, step);
+            else if (e.key === "+" || e.key === "=") zoomAt(0.72);
+            else if (e.key === "-" || e.key === "_") zoomAt(1.35);
+            else if (e.key === "0")
+              setView({ x: 0, y: 0, width: BOARD_WIDTH, height: BOARD_HEIGHT });
           }}
           onDoubleClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
@@ -345,6 +379,7 @@ export function Board({
                   selected={selectedID === s.id}
                   routed={routeSet.has(s.id)}
                   highlighted={highlightSet.has(s.id)}
+                  focusable={s.id === focusedSpaceID}
                   onChoose={choose}
                 />
               ))}
@@ -360,25 +395,11 @@ export function Board({
                   selected={selectedID === s.id}
                   routed={routeSet.has(s.id)}
                   highlighted={highlightSet.has(s.id)}
+                  focusable={s.id === focusedSpaceID}
                   onChoose={choose}
                 />
               ))}
           </g>
-          {route.length > 1 && (
-            <polyline
-              points={route
-                .map((id) => {
-                  const s = catalog.spaces.find((x) => x.id === id);
-                  return `${s?.x || 0},${s?.y || 0}`;
-                })
-                .join(" ")}
-              fill="none"
-              stroke="#ffe08a"
-              strokeWidth="12"
-              strokeDasharray="22 13"
-              pointerEvents="none"
-            />
-          )}
           <g pointerEvents="none">
             {catalog.spaces.map((s) => (
               <MapLabel
@@ -407,6 +428,16 @@ export function Board({
                 )),
               )}
             </g>
+          )}
+          {/* Drawn last so the route sits above labels and unit stacks — it used
+              to be painted underneath them and disappeared at the default zoom. */}
+          {route.length > 1 && (
+            <RoutePath
+              points={route.map((id) => {
+                const s = catalog.spaces.find((x) => x.id === id);
+                return { x: s?.x || 0, y: s?.y || 0 };
+              })}
+            />
           )}
         </svg>
         <View style={[styles.legend, narrow && styles.legendNarrow]}>
@@ -453,7 +484,14 @@ export function Board({
                 return (
                   <Pressable
                     key={u.id}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      selected: selectedUnitIds.includes(u.id),
+                      disabled: !selectable,
+                    }}
+                    accessibilityLabel={`${u.owner} ${u.type}`}
                     disabled={!selectable}
+                    dataSet={{ class: selectable ? "fc-press fc-glow" : undefined }}
                     onPress={() => onToggleUnit?.(u.id)}
                     style={[
                       styles.unitChip,
@@ -461,12 +499,17 @@ export function Board({
                       !selectable && styles.unitChipQuiet,
                     ]}
                   >
-                    <Text style={styles.unitCount}>
-                      {abbreviations[u.type] || u.type}
-                    </Text>
+                    <View
+                      style={[
+                        styles.unitOwnerDot,
+                        { backgroundColor: powerColors[u.owner] || "#C6B77C" },
+                      ]}
+                    />
+                    {/* Was `{u.owner} · {u.id}` — leaking internal keys like
+                        "United States · u0192" straight into the UI. */}
+                    <Text style={styles.unitCount}>{u.type}</Text>
                     <Text style={styles.unitName}>
-                      {u.owner} · {u.id}
-                      {u.damage ? ` · ${u.damage} dmg` : ""}
+                      {u.damage ? `${u.damage} dmg` : ""}
                     </Text>
                   </Pressable>
                 );
@@ -486,12 +529,44 @@ export function Board({
   );
 }
 
+// The route used to be a single 12px dashed line in #ffe08a — the same hue as
+// the selection stroke — painted under the labels. At the default zoom that is
+// ~3.7px on screen and effectively invisible. Now: a dark casing for contrast
+// against any terrain, a saturated animated core, an origin dot and an arrowhead.
+function RoutePath({ points }: { points: { x: number; y: number }[] }) {
+  const d = points.map((p) => `${p.x},${p.y}`).join(" ");
+  const last = points[points.length - 1];
+  const prev = points[points.length - 2];
+  const angle = (Math.atan2(last.y - prev.y, last.x - prev.x) * 180) / Math.PI;
+  return (
+    <g pointerEvents="none">
+      <polyline points={d} fill="none" stroke="#08111C" strokeWidth="26" strokeLinecap="round" strokeLinejoin="round" strokeOpacity=".75" />
+      <polyline points={d} fill="none" stroke={color.cyan} strokeWidth="13" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline
+        points={d}
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="5"
+        strokeDasharray="26 44"
+        strokeLinecap="round"
+        strokeOpacity=".95"
+        className="fc-march"
+      />
+      <circle cx={points[0].x} cy={points[0].y} r="15" fill={color.cyan} stroke="#08111C" strokeWidth="5" />
+      <g transform={`translate(${last.x} ${last.y}) rotate(${angle})`}>
+        <path d="M -20 -20 L 22 0 L -20 20 Z" fill={color.cyan} stroke="#08111C" strokeWidth="5" strokeLinejoin="round" />
+      </g>
+    </g>
+  );
+}
+
 function Territory({
   space,
   owner,
   selected,
   routed,
   highlighted,
+  focusable,
   onChoose,
 }: {
   space: BoardSpace;
@@ -499,6 +574,9 @@ function Territory({
   selected: boolean;
   routed: boolean;
   highlighted: boolean;
+  /** Roving tabindex: only one territory is ever in the tab order, so reaching
+   *  the panels below the map no longer costs 161 Tab presses. */
+  focusable: boolean;
   onChoose: (s: BoardSpace) => void;
 }) {
   const fill =
@@ -507,17 +585,14 @@ function Territory({
       : space.impassable
         ? "#b8aa7d"
         : powerColors[owner || ""] || "#a86f39";
-  const stroke = selected
-    ? "#fff1b8"
-    : routed
-      ? "#ffe08a"
-      : highlighted
-        ? "#81d8c2"
-        : undefined;
+  // Each state gets its own hue. `routed` used to share #ffe08a with `selected`,
+  // and `highlighted` painted an 8px mint outline that shouted louder than the
+  // route itself — so the neighbour hint is now a soft fill tint instead.
+  const stroke = selected ? "#FFFFFF" : routed ? color.cyan : undefined;
   return (
     <g
       role="button"
-      tabIndex={0}
+      tabIndex={focusable ? 0 : -1}
       aria-label={`Select ${space.name}`}
       data-space-id={space.id}
       onClick={() => onChoose(space)}
@@ -536,9 +611,21 @@ function Territory({
           }
           stroke={stroke}
           strokeOpacity={stroke ? 1 : undefined}
-          strokeWidth={stroke ? 8 : undefined}
+          strokeWidth={stroke ? 9 : undefined}
         />
       ))}
+      {highlighted &&
+        space.polygons.map((p, i) => (
+          <path
+            key={`n${i}`}
+            d={p}
+            fill={color.lime}
+            fillOpacity={0.3}
+            stroke={color.lime}
+            strokeOpacity={0.85}
+            strokeWidth={4}
+          />
+        ))}
       {space.kind === "land" &&
         !space.impassable &&
         space.polygons.map((p, i) => (
@@ -652,28 +739,34 @@ function MapUnitStack({
   const column = index % columns;
   const row = Math.floor(index / columns);
   const x = space.x - ((columns - 1) * 86) / 2 + column * 86;
-  const y = space.y + 34 + row * 38;
+  // +52, not +34: the old offset put the first row of stacks straight through
+  // the "N IPC" line that MapLabel draws at space.y + 20.
+  const y = space.y + 52 + row * 38;
+  const tint = powerColors[stack.owner] || "#C6B77C";
   return (
     <g transform={`translate(${x} ${y})`}>
       <title>{`${stack.owner}: ${stack.count} ${stack.type}`}</title>
+      {/* Owner was previously carried only by the 4px border on a uniformly
+          black badge, which was unreadable at a glance. */}
       <rect
         x="-40"
         y="-15"
         width="80"
         height="30"
-        rx="5"
-        fill="#111a16"
-        fillOpacity=".94"
-        stroke={powerColors[stack.owner] || "#c6b77c"}
+        rx="8"
+        fill="#0B0A1A"
+        fillOpacity=".92"
+        stroke={tint}
         strokeWidth="4"
       />
+      <rect x="-40" y="-15" width="80" height="30" rx="8" fill={tint} fillOpacity=".26" />
       <UnitGlyph type={stack.type} />
       <text
         x="4"
-        y="4"
+        y="4.5"
         textAnchor="middle"
-        fill="#dbe1dc"
-        fontSize="8"
+        fill="#FFFFFF"
+        fontSize="9"
         fontWeight="800"
       >
         {abbreviations[stack.type] || stack.type.slice(0, 3).toUpperCase()}
@@ -682,9 +775,12 @@ function MapUnitStack({
         x="29"
         y="6"
         textAnchor="middle"
-        fill="#ffe29a"
-        fontSize="16"
+        fill="#FFFFFF"
+        fontSize="17"
         fontWeight="900"
+        paintOrder="stroke"
+        stroke="#0B0A1A"
+        strokeWidth="3"
       >
         {stack.count}
       </text>
@@ -805,9 +901,23 @@ function midpoint(a: { x: number; y: number }, b: { x: number; y: number }) {
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
 }
-function MapButton({ label, onPress }: { label: string; onPress: () => void }) {
+function MapButton({
+  label,
+  title,
+  onPress,
+}: {
+  label: string;
+  title: string;
+  onPress: () => void;
+}) {
   return (
-    <Pressable onPress={onPress} style={styles.mapButton}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      dataSet={{ class: "fc-press fc-glow" }}
+      onPress={onPress}
+      style={styles.mapButton}
+    >
       <Text style={styles.mapButtonText}>{label}</Text>
     </Pressable>
   );
@@ -822,123 +932,148 @@ function Legend({ color, label }: { color: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  frame: { backgroundColor: "#101714", borderWidth: 1, borderColor: "#37443e" },
+  frame: {
+    backgroundColor: color.bgDeep,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+  },
   toolbar: {
-    height: 72,
+    minHeight: 68,
     paddingHorizontal: 20,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#17211d",
+    gap: 12,
+    paddingVertical: 10,
+    backgroundColor: color.surface,
   },
-  toolbarNarrow: { height: 64, paddingHorizontal: 12 },
+  toolbarNarrow: { paddingHorizontal: 12 },
   eyebrow: {
-    fontSize: 9,
-    letterSpacing: 1.8,
-    color: "#d8a94d",
-    fontWeight: "700",
+    ...t.label,
+    color: color.cyan,
   },
-  heading: { fontFamily: "serif", fontSize: 24, color: "#f1eee5" },
-  headingNarrow: { fontSize: 19 },
+  heading: { ...t.h2, color: color.text },
+  headingNarrow: { fontSize: 19, lineHeight: 24 },
   controls: { flexDirection: "row", gap: 6 },
   mapButton: {
-    minWidth: 42,
-    height: 36,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: "#68736c",
+    minWidth: 48,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderWidth: 2,
+    borderColor: color.border,
+    borderRadius: radius.sm,
+    backgroundColor: color.surface2,
     alignItems: "center",
     justifyContent: "center",
   },
-  mapButtonText: { color: "#e9e5d9", fontSize: 12, fontWeight: "800" },
+  mapButtonText: { ...t.label, color: color.text },
+  // aspectRatio instead of a fixed pixel height: the SVG scales to width, so a
+  // hard `height: 620` letterboxed the map against a flat slab at every width
+  // below 1440 (53% of the frame at 700px).
   mapWrap: {
-    height: 620,
+    width: "100%",
+    aspectRatio: 3500 / 2000,
+    maxHeight: 760,
     position: "relative",
     overflow: "hidden",
-    backgroundColor: "#234e5d",
+    backgroundColor: "#0A2432",
   },
-  mapWrapNarrow: { height: 240 },
+  mapWrapNarrow: { aspectRatio: 1.05, minHeight: 320, maxHeight: 460 },
   mapHint: {
     position: "absolute",
     zIndex: 2,
     top: 10,
     right: 10,
-    backgroundColor: "rgba(12,20,17,.88)",
+    backgroundColor: "rgba(11,10,26,.9)",
     borderWidth: 1,
-    borderColor: "#64736c",
-    paddingHorizontal: 10,
+    borderColor: color.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  mapHintText: {
-    color: "#f2d382",
-    fontSize: 8,
-    fontWeight: "800",
-    letterSpacing: 1.1,
-  },
+  mapHintText: { ...t.micro, fontWeight: "700", color: color.cyan },
   legend: {
     position: "absolute",
     left: 12,
     bottom: 12,
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
-    backgroundColor: "rgba(12,20,17,.9)",
-    paddingHorizontal: 10,
+    backgroundColor: "rgba(11,10,26,.9)",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: color.border,
+    paddingHorizontal: 12,
     paddingVertical: 7,
+    maxWidth: "88%",
   },
-  legendNarrow: { left: 6, bottom: 6, gap: 5, paddingHorizontal: 6 },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  legendSwatch: { width: 9, height: 9, borderRadius: 2 },
-  legendText: { color: "#d7ddd8", fontSize: 8 },
+  legendNarrow: {
+    left: 6,
+    right: 6,
+    bottom: 6,
+    gap: 8,
+    paddingHorizontal: 8,
+    justifyContent: "center",
+    maxWidth: undefined,
+  },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  legendSwatch: { width: 10, height: 10, borderRadius: radius.pill },
+  legendText: { ...t.micro, color: color.textSoft },
   inspector: {
-    minHeight: 96,
     padding: 16,
-    backgroundColor: "#17211d",
+    backgroundColor: color.surface,
     borderTopWidth: 1,
-    borderTopColor: "#37443e",
+    borderTopColor: color.border,
+    gap: 12,
+  },
+  inspectorNarrow: { padding: 12 },
+  inspectorTitle: { flexDirection: "row", alignItems: "center", gap: 12 },
+  ownerDot: { width: 14, height: 14, borderRadius: radius.pill },
+  spaceName: { ...t.h2, color: color.text },
+  spaceMeta: { ...t.micro, color: color.textSoft, marginTop: 2 },
+  // Left-aligned, not justifyContent:"flex-end" — that left a ~900px hole
+  // between the title and the chips and ragged-wrapped past 8 units.
+  unitList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  unitListNarrow: {},
+  unitChip: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
+    gap: 8,
+    borderWidth: 2,
+    borderColor: color.border,
+    borderRadius: radius.sm,
+    backgroundColor: color.surface2,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minHeight: 44,
   },
-  inspectorNarrow: {
-    minHeight: 96,
-    alignItems: "stretch",
-    flexDirection: "column",
-    padding: 12,
-    gap: 10,
+  unitChipSelected: {
+    borderColor: color.cyan,
+    backgroundColor: "rgba(34,211,238,.22)",
   },
-  inspectorTitle: { flexDirection: "row", alignItems: "center", gap: 12 },
-  ownerDot: { width: 13, height: 13, borderRadius: 7 },
-  spaceName: { fontFamily: "serif", fontSize: 22, color: "#f1eee5" },
-  spaceMeta: {
-    fontSize: 9,
-    letterSpacing: 1.3,
-    color: "#9ba69f",
-    marginTop: 3,
-  },
-  unitList: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  unitListNarrow: { justifyContent: "flex-start" },
-  unitChip: {
-    borderWidth: 1,
-    borderColor: "#607069",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  unitChipSelected: { borderColor: "#e3b655", backgroundColor: "#29392f" },
-  unitChipQuiet: { opacity: 0.62 },
-  unitCount: { fontFamily: "serif", fontSize: 14, color: "#d8a94d" },
-  unitName: { fontSize: 8, fontWeight: "700", color: "#d6ddd8", marginTop: 2 },
-  empty: { fontSize: 12, color: "#9ba69f" },
+  unitChipQuiet: { opacity: 0.55 },
+  unitCount: { ...t.bodyEm, color: color.text },
+  unitName: { ...t.micro, color: color.textSoft },
+  unitOwnerDot: { width: 9, height: 9, borderRadius: radius.pill },
+  empty: { ...t.body, color: color.textDim },
   loading: {
-    height: 620,
+    width: "100%",
+    aspectRatio: 3500 / 2000,
+    maxHeight: 760,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#173f50",
+    gap: 14,
+    backgroundColor: "#0A2432",
+  },
+  loadingDot: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.pill,
+    borderWidth: 3,
+    borderColor: "rgba(244,241,255,.18)",
+    borderTopColor: color.cyan,
   },
 });
