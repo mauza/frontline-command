@@ -465,9 +465,23 @@ func (a *app) gameSummary(w http.ResponseWriter, r *http.Request) {
 		problem(w, 500, "could not load game summary")
 		return
 	}
+	// Whether it is this player's move is the whole reason to open the list, so
+	// the summary carries it rather than making the client load every game.
+	view, err := loadView(db, id, me)
+	myTurn, phase, currentPower := false, "", ""
+	if err == nil {
+		currentPower, phase = view.Power, view.Phase
+		for _, p := range me.Powers {
+			if p == currentPower {
+				myTurn = true
+				break
+			}
+		}
+	}
 	writeJSON(w, 200, map[string]any{
 		"id": id, "name": name, "status": status, "round": round,
 		"updatedAt": updated, "playerName": me.Name, "isOwner": me.IsOwner,
+		"currentPower": currentPower, "currentPhase": phase, "myTurn": myTurn,
 	})
 }
 

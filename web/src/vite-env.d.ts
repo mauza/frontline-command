@@ -19,12 +19,14 @@ declare module "react-native" {
   interface PressableProps {
     dataSet?: Record<string, string | number | undefined>;
   }
+  // boxShadow is already declared by react-native as
+  // `ReadonlyArray<BoxShadowValue> | string`; re-declaring it narrower breaks
+  // assignability between ViewStyle and TextStyle.
   interface ViewStyle {
-    boxShadow?: string;
     transition?: string;
+    order?: number;
   }
   interface TextStyle {
-    boxShadow?: string;
     transition?: string;
   }
 }

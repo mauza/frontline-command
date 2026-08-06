@@ -21,22 +21,28 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 Copy-code and copy-link buttons on the invite card. `/join/CODE` opens the join
 tab with the code already filled in.
 
-**A2 — Join a game from a code.** ⬜
+**A2 — Join a game from a code.** ✅
 Receive a code, enter it, land in the lobby, understand who else is in and what
 is being waited on.
 
-**A3 — Understand what power(s) I got.** ⬜
+**A3 — Understand what power(s) I got.** ✅
+"You control" card with power chips, whose turn it is now, how many turns until
+yours, and the full turn order.
 After the host starts, immediately know which powers are mine, what that means
 for turn order, and when I will next act.
 
-**A4 — Come back to a game later.** ⬜
+**A4 — Come back to a game later.** ✅
+The summary endpoint returns whose turn it is; the campaign list shows
+"Round 3 · Japan · Combat Move", tags games waiting on you with YOUR MOVE, and
+sorts those to the top.
 Close the tab, return days later, find my games, and resume without the URL.
 
 ---
 
 ## B. The turn loop
 
-**B1 — Buy units.** ⬜
+**B1 — Buy units.** ✅
+Overspending now says how far over you are instead of silently disabling submit.
 See income, understand what each unit does and costs, build a shopping list,
 know what I can afford, and submit. Includes factory repair.
 
@@ -87,14 +93,16 @@ Surprise Strike, submerging, and the destroyer's effect on all of it.
 Load a transport, move, offload into a hostile territory, optional shore
 bombardment, and the no-retreat rule.
 
-**C7 — Anti-aircraft fire.** ⬜
+**C7 — Anti-aircraft fire.** ✅
+AAA rolls appear as their own labelled dice group before the main battle.
 Understand AAA firing at my aircraft before the main battle, at most three dice
 per AAA, and that it does not fire on overflight.
 
 **C8 — Emergency fighter landing.** ⬜
 Resolve fighters with nowhere to land after a battle.
 
-**C9 — Strategic bombing raid.** ⬜
+**C9 — Strategic bombing raid.** ✅
+Only targets with a bomber in range are offered; damage is reported.
 Send a bomber at a factory, understand damage and its effect on production.
 
 ---
@@ -104,7 +112,8 @@ Send a bomber at a factory, understand damage and its effect on production.
 **D1 — Understand who owns what and where units are.** ⬜
 At a glance, from the map alone.
 
-**D2 — Inspect a territory.** ⬜
+**D2 — Inspect a territory.** ✅
+Victory-city and capital tags added — neither was surfaced anywhere before.
 Tap it and learn owner, IPC value, victory-city status, and the full unit stack.
 
 **D3 — Understand the economy.** ⬜
@@ -124,10 +133,11 @@ computed the same way the engine does (Axis ≥9, Allies ≥10 of 13).
 **E2 — Capture a capital.** ⬜
 Understand the IPC swing and what it means.
 
-**E3 — See the game end.** ⬜
+**E3 — See the game end.** ✅
+Both players get "GAME OVER / Axis wins!".
 A real ending, not "the server has declared this campaign finished".
 
-**E4 — Concede or abandon.** ⬜
+**E4 — Concede or abandon.** ✅
 Deliberate, confirmable, hard to do by accident.
 
 ---

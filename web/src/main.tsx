@@ -52,6 +52,11 @@ type CampaignSummary = {
   updatedAt: string;
   playerName: string;
   isOwner: boolean;
+  currentPower?: string;
+  currentPhase?: string;
+  /** A4: whether you are the one holding things up is the whole reason to open
+   *  this list in an asynchronous game. */
+  myTurn?: boolean;
 };
 async function request<T>(
   path: string,
@@ -298,7 +303,11 @@ function Landing({
       setCampaigns(
         results
           .filter((campaign): campaign is CampaignSummary => campaign !== null)
-          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+          .sort(
+            (a, b) =>
+              Number(!!b.myTurn) - Number(!!a.myTurn) ||
+              b.updatedAt.localeCompare(a.updatedAt),
+          ),
       );
       setUnavailable(
         entries
@@ -430,9 +439,16 @@ function Landing({
                   <View style={s.flex}>
                     <Text style={s.campaignName}>{campaign.name}</Text>
                     <Text style={s.campaignMeta}>
-                      {campaign.status.toUpperCase()} / ROUND {campaign.round} / {campaign.playerName}
+                      {campaign.status === "active" && campaign.currentPower
+                        ? `Round ${campaign.round} · ${campaign.currentPower} · ${campaign.currentPhase}`
+                        : `${campaign.status.toUpperCase()} · Round ${campaign.round}`}
                     </Text>
                   </View>
+                  {campaign.myTurn && campaign.status === "active" && (
+                    <View style={s.yourMoveTag}>
+                      <Text style={s.yourMoveText}>YOUR MOVE</Text>
+                    </View>
+                  )}
                   <Text style={s.campaignArrow}>→</Text>
                 </Pressable>
                 {campaign.isOwner && confirming !== campaign.id && (
@@ -607,6 +623,10 @@ function WarRoom({
   // A decision addressed to one of my powers outranks whose turn it is: the
   // banner used to tell the player who had to act right now that it was
   // "AWAITING COMMAND" from somebody else.
+  // Resolve Combat, or any pending decision, makes the panels the primary task.
+  const combatFirst =
+    game.currentPhase === "Resolve Combat" ||
+    Object.keys(game.pendingDecisions).length > 0;
   const myDecisions = Object.entries(game.pendingDecisions).filter(
     ([, d]) => !d.power || game.me.powers.includes(d.power),
   );
@@ -740,118 +760,244 @@ function WarRoom({
               myTurn={myTurn}
               awaitingMe={myDecisions.length > 0}
             />
-            <View style={s.boardSection}>
-              <Board
-                owners={game.owners}
-                units={game.worldUnits}
-                battleSpaces={liveBattles}
-                resolvedSpaces={resolvedBattles}
-                currentPower={game.currentPower}
-                canSelectUnits={myTurn && movement}
-                selectedUnitIds={selectedUnits}
-                route={route}
-                highlightedSpaces={routeNeighbors}
-                onToggleUnit={toggleUnit}
-                onSpacePress={boardClick}
-                onCatalog={setCatalog}
-              />
-            </View>
-            <View style={[s.grid, narrow && s.column]}>
-              <View style={s.mainColumn}>
-                {movement && (
-                  <MovementPanel
-                    moves={moves}
-                    route={route}
-                    selected={selectedUnits}
-                    units={game.worldUnits}
-                    power={game.currentPower}
-                    catalog={catalog}
-                    addRoute={addRoute}
-                    clear={() => {
-                      setSelectedUnits([]);
-                      setRoute([]);
-                    }}
-                    remove={(id) =>
-                      setMoves((x) => x.filter((m) => m.unitId !== id))
-                    }
-                    submit={submitMoves}
-                    disabled={!myTurn || busy}
-                  />
-                )}
-                {movement && (
-                  <StationaryTransportPanel
-                    game={game}
-                    catalog={catalog}
-                    disabled={!myTurn || busy}
-                    command={command}
-                  />
-                )}
-                {movement && game.currentPhase === "Combat Move" && (
-                  <IgnoreSeaUnitsPanel
-                    game={game}
-                    catalog={catalog}
-                    moves={moves}
-                    disabled={!myTurn || busy}
-                    command={command}
-                    clear={() => setMoves([])}
-                  />
-                )}
-                {game.currentPhase === "Purchase" && (
-                  <PurchasePanel
-                    game={game}
-                    catalog={catalog}
-                    disabled={!myTurn || busy}
-                    command={command}
-                  />
-                )}
-                {game.currentPhase === "Resolve Combat" && (
-                  <CombatPanel
-                    game={game}
-                    catalog={catalog}
-                    disabled={busy}
-                    command={command}
-                  />
-                )}
-                {game.currentPhase === "Place Units" && (
-                  <PlacementPanel
-                    game={game}
-                    type={placeType}
-                    target={placeTarget}
-                    setType={setPlaceType}
-                    setTarget={setPlaceTarget}
-                    catalog={catalog}
-                    disabled={!myTurn || busy}
-                    command={command}
-                  />
-                )}
-                {game.currentPhase === "Collect Income" && (
-                  <InfoCard
-                    title="Payday"
-                    copy={`${game.currentPower} banks ${game.state.income[game.currentPower]} IPC and the turn passes on.`}
-                  />
-                )}
-                {/* Mirrored next to the control that caused it: the single
-                    banner at the top of the dashboard could sit 3000px above
-                    the button the player had just pressed. */}
-                {!!error && <ErrorBanner message={error} />}
-                {myTurn && (
-                  <Button
-                    label={
-                      game.currentPhase === "Collect Income"
-                        ? "Cash in & end turn"
-                        : `Done with ${game.currentPhase}`
-                    }
-                    onPress={() => void command("complete_phase")}
-                    loading={busy}
-                  />
-                )}
-              </View>
-              <View style={[s.sideColumn, narrow && s.sideWide]}>
+            {/* During Resolve Combat, and whenever a decision is
+                waiting, the panels are rendered before the map — in the
+                DOM, not with CSS order, so reading order and focus order
+                match what you see. Otherwise every roll, casualty pick
+                and retreat meant scrolling past the whole world. */}
+            {combatFirst ? (
+              <>
+                <View style={[s.grid, narrow && s.column]}>
+                  <View style={s.mainColumn}>
+                    {movement && (
+                      <MovementPanel
+                        moves={moves}
+                        route={route}
+                        selected={selectedUnits}
+                        units={game.worldUnits}
+                        power={game.currentPower}
+                        catalog={catalog}
+                        addRoute={addRoute}
+                        clear={() => {
+                          setSelectedUnits([]);
+                          setRoute([]);
+                        }}
+                        remove={(id) =>
+                          setMoves((x) => x.filter((m) => m.unitId !== id))
+                        }
+                        submit={submitMoves}
+                        disabled={!myTurn || busy}
+                      />
+                    )}
+                    {movement && (
+                      <StationaryTransportPanel
+                        game={game}
+                        catalog={catalog}
+                        disabled={!myTurn || busy}
+                        command={command}
+                      />
+                    )}
+                    {movement && game.currentPhase === "Combat Move" && (
+                      <IgnoreSeaUnitsPanel
+                        game={game}
+                        catalog={catalog}
+                        moves={moves}
+                        disabled={!myTurn || busy}
+                        command={command}
+                        clear={() => setMoves([])}
+                      />
+                    )}
+                    {game.currentPhase === "Purchase" && (
+                      <PurchasePanel
+                        game={game}
+                        catalog={catalog}
+                        disabled={!myTurn || busy}
+                        command={command}
+                      />
+                    )}
+                    {game.currentPhase === "Resolve Combat" && (
+                      <CombatPanel
+                        game={game}
+                        catalog={catalog}
+                        disabled={busy}
+                        command={command}
+                      />
+                    )}
+                    {game.currentPhase === "Place Units" && (
+                      <PlacementPanel
+                        game={game}
+                        type={placeType}
+                        target={placeTarget}
+                        setType={setPlaceType}
+                        setTarget={setPlaceTarget}
+                        catalog={catalog}
+                        disabled={!myTurn || busy}
+                        command={command}
+                      />
+                    )}
+                    {game.currentPhase === "Collect Income" && (
+                      <InfoCard
+                        title="Payday"
+                        copy={`${game.currentPower} banks ${game.state.income[game.currentPower]} IPC and the turn passes on.`}
+                      />
+                    )}
+                    {/* Mirrored next to the control that caused it: the single
+                        banner at the top of the dashboard could sit 3000px above
+                        the button the player had just pressed. */}
+                    {!!error && <ErrorBanner message={error} />}
+                    {myTurn && (
+                      <Button
+                        label={
+                          game.currentPhase === "Collect Income"
+                            ? "Cash in & end turn"
+                            : `Done with ${game.currentPhase}`
+                        }
+                        onPress={() => void command("complete_phase")}
+                        loading={busy}
+                      />
+                    )}
+                  </View>
+                  <View style={[s.sideColumn, narrow && s.sideWide]}>
+                    <MyPowers game={game} />
                 <VictoryTracker game={game} catalog={catalog} />
-                <PowerLedger game={game} />
-                <Activity events={game.events} />
-              </View>
-            </View>
+                    <PowerLedger game={game} />
+                    <Activity events={game.events} />
+                  </View>
+                </View>
+                <View style={s.boardSection}>
+                  <Board
+                    owners={game.owners}
+                    units={game.worldUnits}
+                    battleSpaces={liveBattles}
+                    resolvedSpaces={resolvedBattles}
+                    currentPower={game.currentPower}
+                    canSelectUnits={myTurn && movement}
+                    selectedUnitIds={selectedUnits}
+                    route={route}
+                    highlightedSpaces={routeNeighbors}
+                    onToggleUnit={toggleUnit}
+                    onSpacePress={boardClick}
+                    onCatalog={setCatalog}
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={s.boardSection}>
+                  <Board
+                    owners={game.owners}
+                    units={game.worldUnits}
+                    battleSpaces={liveBattles}
+                    resolvedSpaces={resolvedBattles}
+                    currentPower={game.currentPower}
+                    canSelectUnits={myTurn && movement}
+                    selectedUnitIds={selectedUnits}
+                    route={route}
+                    highlightedSpaces={routeNeighbors}
+                    onToggleUnit={toggleUnit}
+                    onSpacePress={boardClick}
+                    onCatalog={setCatalog}
+                  />
+                </View>
+                <View style={[s.grid, narrow && s.column]}>
+                  <View style={s.mainColumn}>
+                    {movement && (
+                      <MovementPanel
+                        moves={moves}
+                        route={route}
+                        selected={selectedUnits}
+                        units={game.worldUnits}
+                        power={game.currentPower}
+                        catalog={catalog}
+                        addRoute={addRoute}
+                        clear={() => {
+                          setSelectedUnits([]);
+                          setRoute([]);
+                        }}
+                        remove={(id) =>
+                          setMoves((x) => x.filter((m) => m.unitId !== id))
+                        }
+                        submit={submitMoves}
+                        disabled={!myTurn || busy}
+                      />
+                    )}
+                    {movement && (
+                      <StationaryTransportPanel
+                        game={game}
+                        catalog={catalog}
+                        disabled={!myTurn || busy}
+                        command={command}
+                      />
+                    )}
+                    {movement && game.currentPhase === "Combat Move" && (
+                      <IgnoreSeaUnitsPanel
+                        game={game}
+                        catalog={catalog}
+                        moves={moves}
+                        disabled={!myTurn || busy}
+                        command={command}
+                        clear={() => setMoves([])}
+                      />
+                    )}
+                    {game.currentPhase === "Purchase" && (
+                      <PurchasePanel
+                        game={game}
+                        catalog={catalog}
+                        disabled={!myTurn || busy}
+                        command={command}
+                      />
+                    )}
+                    {game.currentPhase === "Resolve Combat" && (
+                      <CombatPanel
+                        game={game}
+                        catalog={catalog}
+                        disabled={busy}
+                        command={command}
+                      />
+                    )}
+                    {game.currentPhase === "Place Units" && (
+                      <PlacementPanel
+                        game={game}
+                        type={placeType}
+                        target={placeTarget}
+                        setType={setPlaceType}
+                        setTarget={setPlaceTarget}
+                        catalog={catalog}
+                        disabled={!myTurn || busy}
+                        command={command}
+                      />
+                    )}
+                    {game.currentPhase === "Collect Income" && (
+                      <InfoCard
+                        title="Payday"
+                        copy={`${game.currentPower} banks ${game.state.income[game.currentPower]} IPC and the turn passes on.`}
+                      />
+                    )}
+                    {/* Mirrored next to the control that caused it: the single
+                        banner at the top of the dashboard could sit 3000px above
+                        the button the player had just pressed. */}
+                    {!!error && <ErrorBanner message={error} />}
+                    {myTurn && (
+                      <Button
+                        label={
+                          game.currentPhase === "Collect Income"
+                            ? "Cash in & end turn"
+                            : `Done with ${game.currentPhase}`
+                        }
+                        onPress={() => void command("complete_phase")}
+                        loading={busy}
+                      />
+                    )}
+                  </View>
+                  <View style={[s.sideColumn, narrow && s.sideWide]}>
+                    <MyPowers game={game} />
+                <VictoryTracker game={game} catalog={catalog} />
+                    <PowerLedger game={game} />
+                    <Activity events={game.events} />
+                  </View>
+                </View>
+              </>
+            )}
           </>
         )}
         {/* These used to be a bare underlined link inside a pink box plus a
@@ -1151,6 +1297,7 @@ function PurchasePanel({
       (n, [type, count]) => n + (game.units[type]?.Cost || 0) * count,
       0,
     ) + Object.values(repairs).reduce((a, b) => a + b, 0);
+  const over = total > (game.state.ipcs[game.currentPower] || 0);
   const adjust = (type: string, delta: number) =>
     setUnits((x) => ({ ...x, [type]: Math.max(0, (x[type] || 0) + delta) }));
   const submit = async () => {
@@ -1167,10 +1314,18 @@ function PurchasePanel({
       <Text style={s.eyebrow}>SHOPPING</Text>
       <View style={s.cardHeading}>
         <Text style={s.cardTitle}>Build order</Text>
-        <Text style={s.total}>
+        <Text style={[s.total, over && s.totalOver]}>
           {total} / {game.state.ipcs[game.currentPower]} IPC
         </Text>
       </View>
+      {over && (
+        <View dataSet={{ class: "fc-rise" }} style={s.warnBanner}>
+          <Text style={s.warnText}>
+            That's {total - game.state.ipcs[game.currentPower]} IPC more than you
+            have. Drop something before you can buy.
+          </Text>
+        </View>
+      )}
       <View style={s.unitGrid}>
         {Object.entries(game.units).map(([name, spec]) => (
           <View key={name} style={s.unit}>
@@ -2232,6 +2387,81 @@ function IgnoreSeaUnitsPanel({
 /** C4: every player should be able to see how a battle turned out, not just the
  *  attacker who was clicking through it. Shown above the map so it is the first
  *  thing you meet when you come back to the game. */
+const TURN_ORDER = [
+  "Soviet Union",
+  "Germany",
+  "United Kingdom",
+  "Japan",
+  "United States",
+];
+
+/** A3: which powers are mine, and when do I act next. Neither was shown
+ *  anywhere — players had to infer it from owner names in the ledger. */
+function MyPowers({ game }: { game: Game }) {
+  const mine = game.me.powers;
+  if (!mine.length) return null;
+  const current = TURN_ORDER.indexOf(game.currentPower);
+  const nextMine = TURN_ORDER.map((power, i) => ({
+    power,
+    away: (i - current + TURN_ORDER.length) % TURN_ORDER.length,
+  }))
+    .filter((x) => mine.includes(x.power))
+    .sort((a, b) => a.away - b.away)[0];
+  return (
+    <View style={s.card}>
+      <Text style={s.eyebrow}>YOU CONTROL</Text>
+      <View style={s.powerChips}>
+        {mine.map((power) => (
+          <View
+            key={power}
+            style={[
+              s.powerChip,
+              power === game.currentPower && s.powerChipActive,
+            ]}
+          >
+            <View
+              style={[
+                s.ledgerSwatch,
+                { backgroundColor: powerColor[power] || color.textDim },
+              ]}
+            />
+            <Text style={s.powerChipText}>{power}</Text>
+          </View>
+        ))}
+      </View>
+      <Text style={s.hint}>
+        {nextMine?.away === 0
+          ? "It's your move right now."
+          : nextMine
+            ? `Your next turn: ${nextMine.power}, ${plural(nextMine.away, "turn")} away.`
+            : "You have no powers this game."}
+      </Text>
+      <Text style={s.sectionLabel}>TURN ORDER</Text>
+      <View style={s.turnOrderRow}>
+        {TURN_ORDER.map((power) => {
+          const isMine = mine.includes(power);
+          const isNow = power === game.currentPower;
+          return (
+            <View
+              key={power}
+              style={[s.turnPip, isNow && s.turnPipNow, isMine && s.turnPipMine]}
+            >
+              <View
+                style={[
+                  s.turnPipDot,
+                  { backgroundColor: powerColor[power] || color.textDim },
+                ]}
+              />
+              <Text style={[s.turnPipText, isNow && s.turnPipTextNow]}>
+                {power.replace("United ", "U. ").replace("Soviet Union", "USSR")}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 function BattleResults({
   game,
   catalog,
@@ -2929,6 +3159,13 @@ const s = StyleSheet.create({
   campaignName: { ...t.h3, color: color.text, marginBottom: 2 },
   campaignMeta: { ...t.micro, color: color.textDim },
   campaignArrow: { color: color.magenta, fontSize: 20 },
+  yourMoveTag: {
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    backgroundColor: color.magenta,
+  },
+  yourMoveText: { ...t.micro, fontWeight: "800", color: color.onAccent },
   campaignDelete: {
     ...t.micro,
     fontWeight: "700",
@@ -3080,6 +3317,16 @@ const s = StyleSheet.create({
     gap: space.md,
   },
   total: { ...t.h2, color: color.tangerine },
+  totalOver: { color: color.danger },
+  warnBanner: {
+    backgroundColor: "rgba(255,77,94,.14)",
+    borderRadius: radius.md,
+    borderLeftWidth: 4,
+    borderLeftColor: color.danger,
+    padding: space.md,
+    marginTop: space.sm,
+  },
+  warnText: { ...t.body, color: color.text },
 
   // ---- Buttons ------------------------------------------------------------
   button: {
@@ -3341,6 +3588,39 @@ const s = StyleSheet.create({
     borderTopColor: color.borderSoft,
     paddingVertical: space.md,
   },
+  powerChips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  powerChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    backgroundColor: color.surface2,
+  },
+  powerChipActive: {
+    borderColor: color.magenta,
+    backgroundColor: "rgba(233,53,193,.18)",
+  },
+  powerChipText: { ...t.bodyEm, fontSize: 14, color: color.text },
+  turnOrderRow: { flexDirection: "row", flexWrap: "wrap", gap: space.xs },
+  turnPip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  turnPipNow: { backgroundColor: color.surfaceHi, borderColor: color.magenta },
+  turnPipMine: { borderColor: color.border },
+  turnPipDot: { width: 7, height: 7, borderRadius: radius.pill },
+  turnPipText: { ...t.micro, color: color.textDim },
+  turnPipTextNow: { color: color.text, fontWeight: "700" },
   resultCard: {
     backgroundColor: "rgba(255,159,28,.14)",
     borderWidth: 1,

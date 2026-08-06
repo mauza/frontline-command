@@ -484,15 +484,31 @@ export function Board({
                   },
                 ]}
               />
-              <View>
+              <View style={styles.flex}>
                 <Text style={styles.spaceName}>{selected.name}</Text>
                 <Text style={styles.spaceMeta}>
                   {selected.kind === "sea"
                     ? "SEA ZONE"
                     : selected.impassable
                       ? "IMPASSABLE"
-                      : `${owners[selected.id] || "Neutral"}${selected.ipc ? ` / ${selected.ipc} IPC` : ""}`}
+                      : `${owners[selected.id] || "Neutral"}${selected.ipc ? ` · ${selected.ipc} IPC` : ""}`}
                 </Text>
+                {/* Victory cities decide the game and capitals swing the
+                    economy; neither was surfaced anywhere. */}
+                {(selected.victoryCity || selected.capital) && (
+                  <View style={styles.tagRow}>
+                    {selected.victoryCity && (
+                      <Text style={[styles.tag, styles.tagVictory]}>
+                        ★ VICTORY CITY
+                      </Text>
+                    )}
+                    {selected.capital && (
+                      <Text style={[styles.tag, styles.tagCapital]}>
+                        CAPITAL
+                      </Text>
+                    )}
+                  </View>
+                )}
               </View>
             </View>
             <View style={[styles.unitList, narrow && styles.unitListNarrow]}>
@@ -1116,6 +1132,18 @@ const styles = StyleSheet.create({
   unitCount: { ...t.bodyEm, color: color.text },
   unitName: { ...t.micro, color: color.textSoft },
   unitOwnerDot: { width: 9, height: 9, borderRadius: radius.pill },
+  flex: { flex: 1 },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
+  tag: {
+    ...t.micro,
+    fontWeight: "800",
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    overflow: "hidden",
+  },
+  tagVictory: { color: "#0B0A1A", backgroundColor: "#FFE14D" },
+  tagCapital: { color: color.text, backgroundColor: color.violet },
   empty: { ...t.body, color: color.textDim },
   loading: {
     width: "100%",
