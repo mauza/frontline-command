@@ -17,6 +17,16 @@ type Placement struct {
 
 const maxOrderQuantity = 1000
 
+
+// label returns a space's display name so player-facing errors read
+// "West Russia" rather than "west-russia".
+func (s *State) label(id string) string {
+	if space, ok := s.Board.Spaces[id]; ok && space.Name != "" {
+		return space.Name
+	}
+	return id
+}
+
 func (s *State) Income(p Power) int {
 	total := 0
 	for id, owner := range s.Owners {
@@ -95,7 +105,7 @@ func (s *State) Place(placements []Placement) error {
 	total := 0
 	for _, x := range placements {
 		if _, ok := UnitSpecs[x.Type]; !ok || x.Count < 1 || x.Count > maxOrderQuantity-total {
-			return fmt.Errorf("invalid placement in %s", x.Space)
+			return fmt.Errorf("cannot place units in %s", s.label(x.Space))
 		}
 		total += x.Count
 	}
@@ -115,7 +125,7 @@ func (s *State) Place(placements []Placement) error {
 		}
 		sort.Strings(candidates)
 		if len(candidates) == 0 {
-			return fmt.Errorf("no eligible industrial complex for %s", sea)
+			return fmt.Errorf("%s has no friendly factory on an adjacent coast", s.label(sea))
 		}
 		seaRequests = append(seaRequests, seaRequest{candidates: candidates})
 		return nil
@@ -137,12 +147,12 @@ func (s *State) Place(placements []Placement) error {
 	for _, x := range placements {
 		space, ok := s.Board.Spaces[x.Space]
 		if !ok {
-			return fmt.Errorf("invalid placement in %s", x.Space)
+			return fmt.Errorf("cannot place units in %s", s.label(x.Space))
 		}
 		want[x.Type] += x.Count
 		if x.Type == Factory {
 			if space.Kind != "land" || space.IPC == 0 || s.Owners[x.Space] != p || s.Start.Owners[x.Space] != p || x.Count != 1 || plannedFactories[x.Space] || s.hasFactory(x.Space) {
-				return fmt.Errorf("industrial complex cannot be placed in %s", x.Space)
+				return fmt.Errorf("a factory cannot be built in %s", s.label(x.Space))
 			}
 			plannedFactories[x.Space] = true
 			continue
@@ -173,7 +183,7 @@ func (s *State) Place(placements []Placement) error {
 			continue
 		}
 		if factorySpace == "" || s.Owners[factorySpace] != p || s.Start.Owners[factorySpace] != p || !s.hasUsableFactory(p, factorySpace) {
-			return fmt.Errorf("no eligible industrial complex for %s", x.Space)
+			return fmt.Errorf("%s has no factory of yours to build at", s.label(x.Space))
 		}
 		if UnitSpecs[x.Type].Domain == "land" && x.Space != factorySpace {
 			return fmt.Errorf("land units must be placed with their industrial complex")
@@ -236,7 +246,7 @@ func (s *State) Place(placements []Placement) error {
 	for space, used := range capacity {
 		limit := s.factoryCapacity(p, space)
 		if used > limit {
-			return fmt.Errorf("placement in %s exceeds capacity %d", space, limit)
+			return fmt.Errorf("%s is at capacity — it can only take %d units this turn", s.label(space), limit)
 		}
 	}
 	for sea, newFighters := range plannedFighters {
@@ -250,7 +260,7 @@ func (s *State) Place(placements []Placement) error {
 			}
 		}
 		if fighters > slots {
-			return fmt.Errorf("not enough carrier capacity in %s", sea)
+			return fmt.Errorf("not enough carrier capacity in %s", s.label(sea))
 		}
 	}
 	for _, x := range placements {

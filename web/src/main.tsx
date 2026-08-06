@@ -544,12 +544,20 @@ function WarRoom({
     [moves, setMoves] = useState<MoveOrder[]>([]),
     [placeType, setPlaceType] = useState(""),
     [placeTarget, setPlaceTarget] = useState(""),
-    [concedeArmed, setConcedeArmed] = useState(false);
+    [concedeArmed, setConcedeArmed] = useState(false),
+    // Territory the player just tried to route into illegally, for a one-shot
+    // inline nudge instead of a silent no-op.
+    [blocked, setBlocked] = useState("");
   const canConcede =
     ["Soviet Union", "United Kingdom", "United States"].every((power) =>
       game.me.powers.includes(power),
     ) ||
     ["Germany", "Japan"].every((power) => game.me.powers.includes(power));
+  useEffect(() => {
+    if (!blocked) return;
+    const timer = setTimeout(() => setBlocked(""), 2600);
+    return () => clearTimeout(timer);
+  }, [blocked]);
   useEffect(() => {
     setSelectedUnits([]);
     setRoute([]);
@@ -578,14 +586,42 @@ function WarRoom({
       const current = route.length ? route : [origins[0]];
       const last = current[current.length - 1];
       if (space.id === last) return;
-      if (
-        board.connections.some(
-          (e) =>
-            (e.a === last && e.b === space.id) ||
-            (e.b === last && e.a === space.id),
-        )
-      )
-        setRoute([...current, space.id]);
+      const adjacent = board.connections.some(
+        (e) =>
+          (e.a === last && e.b === space.id) ||
+          (e.b === last && e.a === space.id),
+      );
+      // Clicking already restricts routes to adjacent spaces, but a land unit
+      // could still be walked into the ocean and only find out after a server
+      // round-trip. Domain is cheap to check here; everything subtler (canals,
+      // hostility, landing capacity) stays with the engine so the two cannot
+      // disagree.
+      const domains = new Set(
+        selectedUnits.map((id) => {
+          const type = game.worldUnits[id]?.type || "";
+          if (["Fighter", "Bomber"].includes(type)) return "air";
+          return [
+            "Submarine",
+            "Transport",
+            "Destroyer",
+            "Cruiser",
+            "Aircraft Carrier",
+            "Battleship",
+          ].includes(type)
+            ? "sea"
+            : "land";
+        }),
+      );
+      // Land cargo rides a transport through the cargo manifest, never by
+      // plotting its own path across water, so land -> sea is always illegal
+      // here — the server rejects it with "cannot enter water".
+      const legalDomain = domains.has("air")
+        ? true
+        : domains.has("sea")
+          ? space.kind === "sea"
+          : space.kind === "land";
+      if (adjacent && legalDomain) setRoute([...current, space.id]);
+      else if (adjacent && !legalDomain) setBlocked(space.id);
       return;
     }
     if (game.currentPhase === "Place Units" && placeType)
@@ -771,6 +807,7 @@ function WarRoom({
                   <View style={s.mainColumn}>
                     {movement && (
                       <MovementPanel
+                        blocked={blocked ? spaceName(catalog, blocked) : ""}
                         moves={moves}
                         route={route}
                         selected={selectedUnits}
@@ -903,6 +940,7 @@ function WarRoom({
                   <View style={s.mainColumn}>
                     {movement && (
                       <MovementPanel
+                        blocked={blocked ? spaceName(catalog, blocked) : ""}
                         moves={moves}
                         route={route}
                         selected={selectedUnits}
@@ -1089,6 +1127,7 @@ function PhaseGuide({
 }
 
 function MovementPanel({
+  blocked,
   moves,
   route,
   selected,
@@ -1101,6 +1140,8 @@ function MovementPanel({
   submit,
   disabled,
 }: {
+  /** Name of a space the player just tried to route into illegally. */
+  blocked: string;
   moves: MoveOrder[];
   route: string[];
   selected: string[];
@@ -1151,6 +1192,13 @@ function MovementPanel({
       <Text style={s.subtitle}>
         Tap a space, pick your units, then tap where they should go.
       </Text>
+      {!!blocked && (
+        <View dataSet={{ class: "fc-shake" }} style={s.warnBanner}>
+          <Text style={s.warnText}>
+            These units can't go into {blocked}.
+          </Text>
+        </View>
+      )}
       {selected.length > 0 && (
         <View style={s.draft}>
           <Text style={s.draftText}>
@@ -1752,6 +1800,28 @@ function PlacementPanel({
     (a, p) => ({ ...a, [p.Type]: (a[p.Type] || 0) + p.Count }),
     {},
   );
+  // Factories you own, with the capacity the engine enforces (territory IPC).
+  const factories = Object.values(game.worldUnits)
+    .filter(
+      (u) =>
+        u.type === "Industrial Complex" &&
+        u.owner === game.currentPower &&
+        game.owners[u.space] === game.currentPower,
+    )
+    .map((u) => {
+      const space = catalog?.spaces.find((sp) => sp.id === u.space);
+      const used = placements
+        .filter((p) => p.Space === u.space)
+        .reduce((n, p) => n + p.Count, 0);
+      return {
+        id: u.space,
+        name: space?.name || u.space,
+        capacity: space?.ipc || 0,
+        used,
+        damage: u.damage || 0,
+      };
+    })
+    .sort((a, b) => b.capacity - a.capacity);
   const add = () => {
     if (!type || !target) return;
     setPlacements((x) => {
@@ -1770,8 +1840,43 @@ function PlacementPanel({
       <Text style={s.eyebrow}>DEPLOY</Text>
       <Text style={s.cardTitle}>Deploy your new stuff</Text>
       <Text style={s.subtitle}>
-        Pick a unit, tap where it goes on the map, then add it.
+        Pick a unit, tap where it goes on the map, then add it. Land units go on
+        a factory you own; ships go in the sea next to one.
       </Text>
+      <Text style={s.sectionLabel}>WHERE YOU CAN BUILD</Text>
+      {factories.length ? (
+        <View style={s.chips}>
+          {factories.map((f) => {
+            const left = Math.max(0, f.capacity - f.damage - f.used);
+            return (
+              <Pressable
+                key={f.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${f.name}, room for ${left}`}
+                accessibilityState={{ selected: target === f.id }}
+                dataSet={{ class: left ? "fc-press fc-glow" : "fc-off" }}
+                disabled={!left}
+                onPress={() => setTarget(f.id)}
+                style={[
+                  s.choiceChip,
+                  target === f.id && s.choiceChipActive,
+                  !left && s.choiceChipDisabled,
+                ]}
+              >
+                <Text style={s.choiceText}>{f.name}</Text>
+                <Text style={s.chipStats}>
+                  room for {left}
+                  {f.damage ? ` · ${f.damage} damaged` : ""}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <Text style={s.hint}>
+          You have no working factories, so there is nowhere to build this turn.
+        </Text>
+      )}
       <View style={s.chips}>
         {Object.entries(counts).map(([name, count]) => {
           const left = count - (planned[name] || 0);

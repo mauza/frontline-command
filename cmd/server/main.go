@@ -759,7 +759,7 @@ func applyCommand(tx *sql.Tx, me *player, state *gameState, kind string, payload
 			return "", err
 		}
 		syncLegacyState(state)
-		return fmt.Sprintf("%s placed new units", world.CurrentPower()), nil
+		return fmt.Sprintf("%s brought new units into play", world.CurrentPower()), nil
 	case "advance_phase", "complete_phase":
 		return completePhase(me, state)
 	case "collect_income":
@@ -837,7 +837,7 @@ func applyCommand(tx *sql.Tx, me *player, state *gameState, kind string, payload
 			return "", err
 		}
 		state.Battles[territory] = battle.Snapshot()
-		return fmt.Sprintf("casualties assigned in %s", territory), nil
+		return fmt.Sprintf("losses taken in %s", spaceLabel(world, territory)), nil
 	case "submerge":
 		battle, territory, ids, err := loadBattleIDsCommand(me, state, payload)
 		if err != nil {
@@ -847,7 +847,7 @@ func applyCommand(tx *sql.Tx, me *player, state *gameState, kind string, payload
 			return "", err
 		}
 		state.Battles[territory] = battle.Snapshot()
-		return fmt.Sprintf("submarine decision completed in %s", territory), nil
+		return fmt.Sprintf("the submarines made their move in %s", spaceLabel(world, territory)), nil
 	case "land_fighter":
 		battle, territory, err := loadBattleCommand(me, state, payload, true)
 		if err != nil {
@@ -868,7 +868,7 @@ func applyCommand(tx *sql.Tx, me *player, state *gameState, kind string, payload
 			return "", err
 		}
 		state.Battles[territory] = battle.Snapshot()
-		return fmt.Sprintf("fighter landing resolved in %s", territory), nil
+		return fmt.Sprintf("fighters landed after the battle for %s", spaceLabel(world, territory)), nil
 	case "retreat":
 		battle, territory, err := loadBattleCommand(me, state, payload, true)
 		if err != nil {
@@ -882,7 +882,7 @@ func applyCommand(tx *sql.Tx, me *player, state *gameState, kind string, payload
 			return "", err
 		}
 		state.Battles[territory] = battle.Snapshot()
-		return fmt.Sprintf("attackers retreated from %s", territory), nil
+		return fmt.Sprintf("the attackers pulled back from %s", spaceLabel(world, territory)), nil
 	case "continue_battle":
 		battle, territory, err := loadBattleCommand(me, state, payload, true)
 		if err != nil {
@@ -918,7 +918,7 @@ func applyCommand(tx *sql.Tx, me *player, state *gameState, kind string, payload
 				state.Battles[in.Target] = battle
 			}
 		}
-		return fmt.Sprintf("strategic bombing caused %d damage", damage), nil
+		return fmt.Sprintf("bombers hit the factory in %s for %d damage", spaceLabel(world, in.Target), damage), nil
 	case "concede_game":
 		if state.Status != "active" {
 			return "", errors.New("game is not active")
