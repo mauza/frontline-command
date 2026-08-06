@@ -17,9 +17,9 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 
 ## A. Getting into a game
 
-**A1 — Start a game and invite friends.** ⬜
-Land on the site, create a game, understand the invite code is the thing to
-share, and get it to a friend (Discord paste, copy button).
+**A1 — Start a game and invite friends.** ✅
+Copy-code and copy-link buttons on the invite card. `/join/CODE` opens the join
+tab with the code already filled in.
 
 **A2 — Join a game from a code.** ⬜
 Receive a code, enter it, land in the lobby, understand who else is in and what
@@ -75,9 +75,10 @@ powers defend together and each assigns in turn.
 After a round, understand my odds, see where I can retreat to, and know that
 amphibious attackers cannot retreat.
 
-**C4 — Watch a battle I am not fighting.** 🚧
-Live battles now pulse on the map for every player and resolved ones burst.
-Still missing: a readable "what died" summary after a battle resolves.
+**C4 — Watch a battle I am not fighting.** ✅
+Live battles pulse on the map for every player, resolved ones burst, and a
+result banner above the map tells everyone who took what and after how many
+rounds. Battle log entries use territory names instead of raw ids.
 
 **C5 — Naval combat: submarines and destroyers.** ⬜
 Surprise Strike, submerging, and the destroyer's effect on all of it.
@@ -116,9 +117,9 @@ A log I can actually read, not raw event strings.
 
 ## E. Winning, losing, and edge states
 
-**E1 — Track victory conditions.** ⬜
-Victory cities held vs needed (Axis 9, Allies 10), checked after the US turn.
-Currently there is no victory-city UI at all.
+**E1 — Track victory conditions.** ✅
+"Road to victory" card: cities held vs needed per side with a pip track,
+computed the same way the engine does (Axis ≥9, Allies ≥10 of 13).
 
 **E2 — Capture a capital.** ⬜
 Understand the IPC swing and what it means.

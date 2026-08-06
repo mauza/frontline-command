@@ -790,7 +790,7 @@ func applyCommand(tx *sql.Tx, me *player, state *gameState, kind string, payload
 			return "", err
 		}
 		state.Battles[in.Territory] = battle.Snapshot()
-		return fmt.Sprintf("%s started battle in %s", world.CurrentPower(), in.Territory), nil
+		return fmt.Sprintf("%s attacked %s", world.CurrentPower(), spaceLabel(world, in.Territory)), nil
 	case "battle_step":
 		var in struct {
 			Territory string `json:"territory"`
@@ -806,7 +806,14 @@ func applyCommand(tx *sql.Tx, me *player, state *gameState, kind string, payload
 			return "", err
 		}
 		state.Battles[territory] = battle.Snapshot()
-		return fmt.Sprintf("battle in %s advanced", territory), nil
+		snapshot := state.Battles[territory]
+		if snapshot.Complete {
+			if snapshot.Winner != "" {
+				return fmt.Sprintf("%s won the battle for %s", snapshot.Winner, spaceLabel(world, territory)), nil
+			}
+			return fmt.Sprintf("the battle for %s ended with no victor", spaceLabel(world, territory)), nil
+		}
+		return fmt.Sprintf("another round of fighting in %s", spaceLabel(world, territory)), nil
 	case "choose_casualties":
 		battle, territory, ids, err := loadBattleIDsCommand(me, state, payload)
 		if err != nil {
@@ -871,7 +878,7 @@ func applyCommand(tx *sql.Tx, me *player, state *gameState, kind string, payload
 			return "", err
 		}
 		state.Battles[territory] = battle.Snapshot()
-		return fmt.Sprintf("battle in %s continues", territory), nil
+		return fmt.Sprintf("the fight for %s goes on", spaceLabel(world, territory)), nil
 	case "strategic_bomb":
 		if err := requireEngineTurn(me, state); err != nil {
 			return "", err
@@ -1354,6 +1361,18 @@ func requestLogger(next http.Handler) http.Handler {
 		slog.Info("request", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start))
 	})
 }
+
+// spaceLabel returns the display name for a space id so player-facing event
+// messages read "West Russia" rather than "west-russia".
+func spaceLabel(world *gameengine.State, id string) string {
+	if world != nil {
+		if space, ok := world.Board.Spaces[id]; ok && space.Name != "" {
+			return space.Name
+		}
+	}
+	return id
+}
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")

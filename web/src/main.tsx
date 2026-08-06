@@ -98,6 +98,7 @@ function App() {
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
   const remember = (id: string, token: string) => {
+    // /join/CODE has served its purpose once we are in the game.
     const next = { ...sessions, [id]: token };
     setSessions(next);
     localStorage.setItem(storageKey, JSON.stringify(next));
@@ -260,10 +261,15 @@ function Landing({
   forget: (id: string) => void;
 }) {
   const narrow = useWindowDimensions().width < NARROW;
-  const [mode, setMode] = useState<"create" | "join">("create"),
+  const invited = location.pathname.startsWith("/join/")
+    ? decodeURIComponent(location.pathname.split("/")[2] || "").toUpperCase()
+    : "";
+  const [mode, setMode] = useState<"create" | "join">(
+    invited ? "join" : "create",
+  ),
     [gameName, setGameName] = useState(""),
     [playerName, setPlayerName] = useState(""),
-    [code, setCode] = useState(""),
+    [code, setCode] = useState(invited),
     [campaigns, setCampaigns] = useState<CampaignSummary[]>([]),
     [unavailable, setUnavailable] = useState<string[]>([]),
     [loadingCampaigns, setLoadingCampaigns] = useState(false),
@@ -728,6 +734,7 @@ function WarRoom({
                   command={command}
                 />
               ))}
+            <BattleResults game={game} catalog={catalog} />
             <PhaseGuide
               phase={game.currentPhase}
               myTurn={myTurn}
@@ -840,6 +847,7 @@ function WarRoom({
                 )}
               </View>
               <View style={[s.sideColumn, narrow && s.sideWide]}>
+                <VictoryTracker game={game} catalog={catalog} />
                 <PowerLedger game={game} />
                 <Activity events={game.events} />
               </View>
@@ -1708,9 +1716,18 @@ function Lobby({
         <View style={[s.sideColumn, narrow && s.sideWide]}>
           <View style={s.card}>
             <Text style={s.eyebrow}>INVITE YOUR FRIENDS</Text>
-            <Text style={s.inviteCode}>{game.joinCode}</Text>
-            <Text style={s.subtitle}>
-              Send this code to your friends. 2–5 players.
+            <Text selectable style={s.inviteCode}>
+              {game.joinCode}
+            </Text>
+            <View style={s.inline}>
+              <CopyButton label="Copy code" value={game.joinCode} />
+              <CopyButton
+                label="Copy link"
+                value={`${location.origin}/join/${game.joinCode}`}
+              />
+            </View>
+            <Text style={s.footnote}>
+              Send this to your friends. 2–5 players.
             </Text>
           </View>
           <Activity events={game.events} />
@@ -2212,6 +2229,115 @@ function IgnoreSeaUnitsPanel({
   );
 }
 
+/** C4: every player should be able to see how a battle turned out, not just the
+ *  attacker who was clicking through it. Shown above the map so it is the first
+ *  thing you meet when you come back to the game. */
+function BattleResults({
+  game,
+  catalog,
+}: {
+  game: Game;
+  catalog: BoardCatalog | null;
+}) {
+  const done = Object.values(game.battles).filter((b) => b.complete);
+  if (!done.length) return null;
+  return (
+    <View dataSet={{ class: "fc-rise" }} style={s.resultCard}>
+      <Text style={s.resultTitle}>
+        {done.length === 1 ? "BATTLE RESULT" : "BATTLE RESULTS"}
+      </Text>
+      {done.map((b) => {
+        const mine = game.me.powers.includes(b.winner || "");
+        return (
+          <View key={b.territory} style={s.resultRow}>
+            <Text style={s.resultIcon}>{mine ? "🎉" : "💥"}</Text>
+            <Text style={s.resultText}>
+              <Text style={s.resultWinner}>{b.winner || "Nobody"}</Text>
+              {b.winner === b.attacker ? " took " : " held "}
+              <Text style={s.resultPlace}>
+                {spaceName(catalog, b.territory)}
+              </Text>
+              {` after ${plural(b.round, "round")}`}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+function CopyButton({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <SmallButton
+      label={copied ? "Copied!" : label}
+      onPress={() => {
+        void navigator.clipboard?.writeText(value).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1800);
+          },
+          () => {},
+        );
+      }}
+    />
+  );
+}
+function VictoryTracker({
+  game,
+  catalog,
+}: {
+  game: Game;
+  catalog: BoardCatalog | null;
+}) {
+  const cities = (catalog?.spaces || []).filter((sp) => sp.victoryCity);
+  if (!cities.length) return null;
+  const axisCities = cities.filter((sp) => {
+    const owner = game.owners[sp.id];
+    return owner === "Germany" || owner === "Japan";
+  });
+  const axis = axisCities.length;
+  const allies = cities.length - axis;
+  const rows = [
+    { side: "Axis", held: axis, need: 9, tint: color.danger },
+    { side: "Allies", held: allies, need: 10, tint: color.success },
+  ];
+  return (
+    <View style={s.card}>
+      <Text style={s.eyebrow}>ROAD TO VICTORY</Text>
+      <Text style={s.subtitle}>
+        {cities.length} victory cities on the board. First side to its number
+        wins, checked after the United States turn.
+      </Text>
+      {rows.map((row) => (
+        <View key={row.side} style={s.victoryRow}>
+          <View style={s.victoryHead}>
+            <Text style={s.ledgerPower}>{row.side}</Text>
+            <Text style={s.victoryCount}>
+              <Text style={{ color: row.tint }}>{row.held}</Text>
+              <Text style={s.victoryNeed}> / {row.need}</Text>
+            </Text>
+          </View>
+          <View style={s.victoryTrack}>
+            {Array.from({ length: row.need }, (_, i) => (
+              <View
+                key={i}
+                style={[
+                  s.victoryPip,
+                  i < row.held && { backgroundColor: row.tint },
+                ]}
+              />
+            ))}
+          </View>
+          <Text style={s.hint}>
+            {row.held >= row.need
+              ? "Victory!"
+              : `${row.need - row.held} more to win`}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 function PowerLedger({ game }: { game: Game }) {
   return (
     <View style={s.card}>
@@ -3214,6 +3340,42 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: color.borderSoft,
     paddingVertical: space.md,
+  },
+  resultCard: {
+    backgroundColor: "rgba(255,159,28,.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,159,28,.5)",
+    borderRadius: radius.md,
+    borderLeftWidth: 5,
+    borderLeftColor: color.tangerine,
+    padding: space.lg,
+    gap: space.sm,
+  },
+  resultTitle: { ...t.label, color: color.tangerine },
+  resultRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  resultIcon: { fontSize: 18 },
+  resultText: { ...t.body, color: color.text, flex: 1 },
+  resultWinner: { fontWeight: "800" },
+  resultPlace: { fontWeight: "800", color: color.tangerine },
+  victoryRow: {
+    borderTopWidth: 1,
+    borderTopColor: color.borderSoft,
+    paddingVertical: space.md,
+    gap: space.sm,
+  },
+  victoryHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  victoryCount: { ...t.h3 },
+  victoryNeed: { color: color.textDim },
+  victoryTrack: { flexDirection: "row", gap: 3, flexWrap: "wrap" },
+  victoryPip: {
+    width: 16,
+    height: 8,
+    borderRadius: 3,
+    backgroundColor: color.surfaceHi,
   },
   ledgerPowerRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   ledgerSwatch: { width: 10, height: 10, borderRadius: radius.pill },
