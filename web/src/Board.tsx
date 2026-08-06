@@ -27,6 +27,11 @@ type Props = {
   selectedUnitIds?: string[];
   route?: string[];
   highlightedSpaces?: string[];
+  /** Territories with a live battle, so every player — not just the attacker —
+   *  can see where the fighting is. */
+  battleSpaces?: string[];
+  /** Territories whose battle just finished, for a one-shot burst. */
+  resolvedSpaces?: string[];
   onToggleUnit?: (id: string) => void;
   onSpacePress?: (space: BoardSpace, catalog: BoardCatalog) => void;
   onCatalog?: (catalog: BoardCatalog) => void;
@@ -62,6 +67,8 @@ export function Board({
   selectedUnitIds = [],
   route = [],
   highlightedSpaces = [],
+  battleSpaces = [],
+  resolvedSpaces = [],
   onToggleUnit,
   onSpacePress,
   onCatalog,
@@ -429,6 +436,17 @@ export function Board({
               )}
             </g>
           )}
+          {/* Battle markers sit above the labels so they read at any zoom. */}
+          <g pointerEvents="none">
+            {battleSpaces.map((id) => {
+              const sp = catalog.spaces.find((x) => x.id === id);
+              return sp ? <BattleMarker key={id} x={sp.x} y={sp.y} /> : null;
+            })}
+            {resolvedSpaces.map((id) => {
+              const sp = catalog.spaces.find((x) => x.id === id);
+              return sp ? <ResolvedBurst key={id} x={sp.x} y={sp.y} /> : null;
+            })}
+          </g>
           {/* Drawn last so the route sits above labels and unit stacks — it used
               to be painted underneath them and disappeared at the default zoom. */}
           {route.length > 1 && (
@@ -556,6 +574,46 @@ function RoutePath({ points }: { points: { x: number; y: number }[] }) {
       <g transform={`translate(${last.x} ${last.y}) rotate(${angle})`}>
         <path d="M -20 -20 L 22 0 L -20 20 Z" fill={color.cyan} stroke="#08111C" strokeWidth="5" strokeLinejoin="round" />
       </g>
+    </g>
+  );
+}
+
+/** A live battle: pulsing ring plus a burst, so it reads even zoomed out. */
+function BattleMarker({ x, y }: { x: number; y: number }) {
+  const spikes = [];
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const r = i % 2 === 0 ? 72 : 36;
+    spikes.push(`${x + Math.cos(a) * r},${y + Math.sin(a) * r}`);
+  }
+  return (
+    <g className="fc-pulse">
+      <circle cx={x} cy={y} r="86" fill="#FF3D81" fillOpacity=".28" />
+      <polygon
+        points={spikes.join(" ")}
+        fill="#FF9F1C"
+        stroke="#7F1D2B"
+        strokeWidth="4"
+        strokeLinejoin="round"
+      />
+      <circle cx={x} cy={y} r="20" fill="#FFF3C4" />
+    </g>
+  );
+}
+/** A battle that just resolved. */
+function ResolvedBurst({ x, y }: { x: number; y: number }) {
+  return (
+    <g className="fc-burst">
+      <circle
+        cx={x}
+        cy={y}
+        r="80"
+        fill="none"
+        stroke="#FFE14D"
+        strokeWidth="14"
+        strokeOpacity=".9"
+      />
+      <circle cx={x} cy={y} r="34" fill="#FF9F1C" fillOpacity=".85" />
     </g>
   );
 }

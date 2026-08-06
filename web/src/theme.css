@@ -83,6 +83,11 @@ a:focus-visible {
   50% { opacity: 1; }
 }
 @keyframes fc-spin { to { transform: rotate(360deg); } }
+@keyframes fc-burst {
+  0% { transform: scale(.25); opacity: 1; }
+  70% { opacity: .75; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
 
 .fc-rise { animation: fc-rise 220ms cubic-bezier(.2,0,0,1) both; }
 .fc-pop { animation: fc-pop 420ms cubic-bezier(.34,1.56,.64,1) both; }
@@ -91,6 +96,14 @@ a:focus-visible {
 .fc-march { animation: fc-march 900ms linear infinite; }
 .fc-pulse { animation: fc-pulse 1.6s ease-in-out infinite; }
 .fc-spin { animation: fc-spin 700ms linear infinite; }
+/* transform-box/origin so the SVG burst scales about its own centre rather
+   than the viewBox origin. */
+.fc-burst {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fc-burst 1.4s cubic-bezier(.2,0,0,1) infinite;
+}
+.fc-pulse { transform-box: fill-box; transform-origin: center; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

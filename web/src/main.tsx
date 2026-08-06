@@ -591,6 +591,13 @@ function WarRoom({
     if (await command("movement_plan", { moves: all, transports }))
       setMoves([]);
   };
+  // Every player sees where the fighting is, not just the attacker.
+  const liveBattles = Object.values(game.battles)
+    .filter((b) => !b.complete)
+    .map((b) => b.territory);
+  const resolvedBattles = Object.values(game.battles)
+    .filter((b) => b.complete)
+    .map((b) => b.territory);
   // A decision addressed to one of my powers outranks whose turn it is: the
   // banner used to tell the player who had to act right now that it was
   // "AWAITING COMMAND" from somebody else.
@@ -721,11 +728,17 @@ function WarRoom({
                   command={command}
                 />
               ))}
-            <PhaseGuide phase={game.currentPhase} myTurn={myTurn} />
+            <PhaseGuide
+              phase={game.currentPhase}
+              myTurn={myTurn}
+              awaitingMe={myDecisions.length > 0}
+            />
             <View style={s.boardSection}>
               <Board
                 owners={game.owners}
                 units={game.worldUnits}
+                battleSpaces={liveBattles}
+                resolvedSpaces={resolvedBattles}
                 currentPower={game.currentPower}
                 canSelectUnits={myTurn && movement}
                 selectedUnitIds={selectedUnits}
@@ -883,7 +896,18 @@ function WarRoom({
   );
 }
 
-function PhaseGuide({ phase, myTurn }: { phase: string; myTurn: boolean }) {
+function PhaseGuide({
+  phase,
+  myTurn,
+  awaitingMe,
+}: {
+  phase: string;
+  myTurn: boolean;
+  /** A decision is waiting on me even though it is not my turn. Without this the
+   *  guide told the player who had to act "sit tight", directly contradicting
+   *  the "they're waiting on you" banner right above it. */
+  awaitingMe: boolean;
+}) {
   const instructions: Record<string, string> = {
     Purchase: "Spend your IPC on new units below the map.",
     "Combat Move":
@@ -897,12 +921,14 @@ function PhaseGuide({ phase, myTurn }: { phase: string; myTurn: boolean }) {
   return (
     <View style={s.phaseGuide}>
       <Text style={s.phaseGuideTitle}>
-        {myTurn ? "WHAT TO DO" : "WHAT'S HAPPENING"}
+        {myTurn || awaitingMe ? "WHAT TO DO" : "WHAT'S HAPPENING"}
       </Text>
       <Text style={s.phaseGuideText}>
-        {myTurn
-          ? instructions[phase] || "Use the controls below the map."
-          : `Someone else is doing their ${phase}. Sit tight.`}
+        {awaitingMe
+          ? "A battle needs your call. Scroll to the decision above."
+          : myTurn
+            ? instructions[phase] || "Use the controls below the map."
+            : `Someone else is doing their ${phase}. Sit tight.`}
       </Text>
     </View>
   );
@@ -1401,37 +1427,43 @@ function BattleCard({
       {battle.stage === "aaa" &&
         battle.round === 0 &&
         !battle.complete &&
-        !battle.started &&
-        bombardment.ids.length > 0 && (
-        <>
-          <Text style={s.sectionLabel}>SHORE BOMBARDMENT · OPTIONAL</Text>
-          <ChipList
-            ids={bombardment.ids}
-            units={game.worldUnits}
-            selected={bombarders}
-            toggle={(id) =>
-              setBombarders(
-                toggleBombarder(
+        !battle.started && (
+          <>
+            {/* The bombardment picker is optional and only appears when ships
+                can actually bombard, but the Fight! button below is the only
+                way to start ANY battle and must never be gated on it. */}
+            {bombardment.ids.length > 0 && (
+              <>
+                <Text style={s.sectionLabel}>SHORE BOMBARDMENT · OPTIONAL</Text>
+                <ChipList
+                  ids={bombardment.ids}
+                  units={game.worldUnits}
+                  selected={bombarders}
+                  toggle={(id) =>
+                    setBombarders(
+                      toggleBombarder(
+                        bombarders,
+                        id,
+                        bombardment.ids,
+                        bombardment.limit,
+                      ),
+                    )
+                  }
+                />
+              </>
+            )}
+            <SmallButton
+              label="Fight!"
+              disabled={disabled || !game.me.powers.includes(game.currentPower)}
+              onPress={() =>
+                void command("start_battle", {
+                  territory: battle.territory,
                   bombarders,
-                  id,
-                  bombardment.ids,
-                  bombardment.limit,
-                ),
-              )
-            }
-          />
-          <SmallButton
-            label="Fight!"
-            disabled={disabled || !game.me.powers.includes(game.currentPower)}
-            onPress={() =>
-              void command("start_battle", {
-                territory: battle.territory,
-                bombarders,
-              })
-            }
-          />
-        </>
-      )}
+                })
+              }
+            />
+          </>
+        )}
       {pending && (
         <View style={s.pending}>
           <Text style={s.pendingTitle}>
@@ -1860,6 +1892,7 @@ function RetreatDecision({
   return (
     <View style={s.card}>
       <Text style={s.eyebrow}>RETREAT · {spaceName(catalog, territory)}</Text>
+      <DiceStrip rolls={game.battles[territory]?.diceTranscript || []} />
       <Text style={s.subtitle}>
         Surface and land units retreat together. Aircraft remain in the battle
         space and complete landing during noncombat movement.
@@ -1883,7 +1916,7 @@ function RetreatDecision({
           />
         )}
         <SmallButton
-          label="Continue battle"
+          label="Continue fighting"
           disabled={disabled}
           onPress={() => void command("continue_battle", { territory })}
         />
@@ -1922,19 +1955,32 @@ function OwnerCasualtyDecision({
   return (
     <View style={s.card}>
       <Text style={s.eyebrow}>
-        MULTINATIONAL CASUALTIES / {spaceName(catalog, territory)}
+        PICK YOUR LOSSES · {spaceName(catalog, territory)}
       </Text>
       <Text style={s.subtitle}>
-        {pending.power} must assign between {minHits} and {maxHits} hit(s).
-        Other defending powers decide afterward in turn order.
+        {minHits === maxHits
+          ? `${pending.power} loses ${plural(maxHits, "unit")}.`
+          : `${pending.power} loses ${minHits}–${maxHits} units.`}{" "}
+        {/* This panel handles grouped losses for either side, so the follow-up
+            sentence has to match which side is actually choosing. */}
+        {pending.power === game.battles[territory]?.attacker
+          ? "Your other attacking powers choose after you."
+          : "The other defending powers choose after you."}
       </Text>
+      <DiceStrip rolls={game.battles[territory]?.diceTranscript || []} />
       <ChipList
         ids={pending.eligible || []}
         units={game.worldUnits}
         selected={selected}
         toggle={add}
+        specs={game.units}
+        doomed
+        atCap={selected.length >= maxHits}
         counts
       />
+      <Text style={s.hint}>
+        {selected.length} of {plural(maxHits, "hit")} assigned
+      </Text>
       <View style={s.inline}>
         <SmallButton
           label="Clear"
@@ -1942,7 +1988,7 @@ function OwnerCasualtyDecision({
           onPress={() => setSelected([])}
         />
         <SmallButton
-          label="Submit casualties"
+          label="Lock it in"
           disabled={
             disabled || selected.length < minHits || selected.length > maxHits
           }
@@ -2348,32 +2394,42 @@ const PIPS: Record<number, [number, number][]> = {
     [2, 2],
   ],
 };
-function Die({ value, delay }: { value: number; delay: number }) {
+function Die({
+  value,
+  delay,
+  hit,
+}: {
+  value: number;
+  delay: number;
+  /** undefined when the server did not record a target (older saved games). */
+  hit?: boolean;
+}) {
+  const face = hit === true ? color.danger : color.text;
+  const pip = hit === true ? "#FFFFFF" : color.bgDeep;
   return (
     <svg
-      width="26"
-      height="26"
+      width="28"
+      height="28"
       viewBox="0 0 30 30"
       className="fc-tumble"
       style={{ animationDelay: `${delay}ms`, flexShrink: 0 }}
-      aria-label={`Rolled ${value}`}
+      aria-label={
+        hit === undefined
+          ? `Rolled ${value}`
+          : `Rolled ${value}, ${hit ? "hit" : "miss"}`
+      }
     >
       <rect
         width="30"
         height="30"
         rx="7"
-        fill={color.text}
-        stroke={color.violetDeep}
+        fill={face}
+        stroke={hit === true ? "#7F1D2B" : color.violetDeep}
         strokeWidth="1.5"
+        opacity={hit === false ? 0.45 : 1}
       />
       {(PIPS[value] || []).map(([cx, cy], i) => (
-        <circle
-          key={i}
-          cx={6 + cx * 9}
-          cy={6 + cy * 9}
-          r="2.7"
-          fill={color.bgDeep}
-        />
+        <circle key={i} cx={6 + cx * 9} cy={6 + cy * 9} r="2.7" fill={pip} />
       ))}
     </svg>
   );
@@ -2389,26 +2445,42 @@ function DiceStrip({ rolls }: { rolls: DiceRoll[] }) {
       : purpose.startsWith("defender")
         ? "Defenders"
         : purpose.replace(/^\w/, (m) => m.toUpperCase());
-  const groups: { label: string; faces: number[] }[] = [];
+  type Face = { value: number; hit?: boolean };
+  const groups: { label: string; faces: Face[] }[] = [];
   for (const roll of rolls) {
     const label = side(roll.purpose);
+    const faces: Face[] = roll.results.map((value) => ({
+      value,
+      hit: roll.target ? value <= roll.target : undefined,
+    }));
     const last = groups[groups.length - 1];
-    if (last && last.label === label) last.faces.push(...roll.results);
-    else groups.push({ label, faces: [...roll.results] });
+    if (last && last.label === label) last.faces.push(...faces);
+    else groups.push({ label, faces });
   }
   return (
     <View style={s.diceBlock}>
       <Text style={s.diceHeading}>THE DICE</Text>
-      {groups.slice(-3).map((group, i) => (
-        <View key={`${group.label}-${i}`} style={s.diceRow}>
-          <Text style={s.dicePurpose}>{group.label}</Text>
-          <View style={s.diceFaces}>
-            {group.faces.map((value, j) => (
-              <Die key={j} value={value} delay={j * 70} />
-            ))}
+      {groups.slice(-3).map((group, i) => {
+        const hits = group.faces.filter((f) => f.hit === true).length;
+        const scored = group.faces.some((f) => f.hit !== undefined);
+        return (
+          <View key={`${group.label}-${i}`} style={s.diceRow}>
+            <View style={s.diceRowHead}>
+              <Text style={s.dicePurpose}>{group.label}</Text>
+              {scored && (
+                <Text style={hits ? s.diceHits : s.diceNoHits}>
+                  {hits ? `${plural(hits, "hit")}!` : "no hits"}
+                </Text>
+              )}
+            </View>
+            <View style={s.diceFaces}>
+              {group.faces.map((face, j) => (
+                <Die key={j} value={face.value} hit={face.hit} delay={j * 70} />
+              ))}
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -3112,6 +3184,14 @@ const s = StyleSheet.create({
   },
   diceHeading: { ...t.label, color: color.textSoft, marginBottom: space.xs },
   diceRow: { gap: space.xs },
+  diceRowHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space.sm,
+  },
+  diceHits: { ...t.label, color: color.danger },
+  diceNoHits: { ...t.micro, color: color.textDim },
   dicePurpose: { ...t.micro, color: color.textSoft },
   diceFaces: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   raidRow: {

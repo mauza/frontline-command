@@ -10,6 +10,10 @@ type Dice interface{ Roll(count int) []int }
 type DiceRoll struct {
 	Purpose string `json:"purpose"`
 	Results []int  `json:"results"`
+	// Target is the number a die must not exceed to score a hit. Recorded so
+	// clients can show which dice hit without re-deriving the value, which they
+	// cannot do correctly for artillery-supported infantry.
+	Target int `json:"target,omitempty"`
 }
 
 type DecisionKind string
@@ -209,11 +213,11 @@ func (b *Battle) Step() error {
 	return nil
 }
 
-func (b *Battle) roll(purpose string, count int) []int {
+func (b *Battle) roll(purpose string, count int, target int) []int {
 	results := b.dice.Roll(count)
 	if count > 0 {
 		copyResults := append([]int(nil), results...)
-		b.Rolls = append(b.Rolls, DiceRoll{Purpose: purpose, Results: copyResults})
+		b.Rolls = append(b.Rolls, DiceRoll{Purpose: purpose, Results: copyResults, Target: target})
 	}
 	return results
 }
@@ -232,7 +236,7 @@ func (b *Battle) fireAAA() {
 		}
 	}
 	dice := min(len(air), guns*3)
-	hits := countHits(b.roll("AAA fire", dice), 1)
+	hits := countHits(b.roll("AAA fire", dice, 1), 1)
 	b.stage = "bombard"
 	if hits > 0 {
 		b.Pending = &PendingDecision{Kind: ChooseCasualties, Power: b.Attacker, Hits: hits, Eligible: air}
@@ -274,7 +278,7 @@ func (b *Battle) fireBombardment() {
 			continue
 		}
 		u.CombatUsed = true
-		if countHits(b.roll("shore bombardment", 1), UnitSpecs[u.Type].Attack) == 1 {
+		if countHits(b.roll("shore bombardment", 1, UnitSpecs[u.Type].Attack), UnitSpecs[u.Type].Attack) == 1 {
 			hits++
 		}
 		used++
@@ -937,7 +941,7 @@ func (b *Battle) rollUnits(units []*Unit, attacking bool, purpose string) int {
 				supported--
 			}
 		}
-		hits += countHits(b.roll(purpose+" "+string(u.Type), 1), value)
+		hits += countHits(b.roll(purpose+" "+string(u.Type), 1, value), value)
 	}
 	return hits
 }
@@ -968,7 +972,7 @@ func (b *Battle) rollGroups(units []*Unit, attacking, airCanHitSubs bool, purpos
 		} else if UnitSpecs[u.Type].Domain == "air" && !airCanHitSubs {
 			restriction = "non-sub"
 		}
-		hits[restriction] += countHits(b.roll(purpose+" "+string(u.Type), 1), value)
+		hits[restriction] += countHits(b.roll(purpose+" "+string(u.Type), 1, value), value)
 	}
 	// Restricted hits are assigned first so broad surface hits retain all legal targets.
 	order := []string{"non-sub", "sea", "all"}

@@ -27,7 +27,13 @@ export type PendingDecision = {
   group?: number;
 };
 
-export type DiceRoll = { purpose: string; results: number[] };
+export type DiceRoll = {
+  purpose: string;
+  results: number[];
+  /** A die at or below this scores a hit. Sent by the server because the client
+   *  cannot derive it: artillery-supported infantry attack at 2, not 1. */
+  target?: number;
+};
 
 export type Battle = {
   territory: string;
